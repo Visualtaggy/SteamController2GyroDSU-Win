@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Threads REQUIRED)
 
-# hidapi-hidraw
 find_library(HIDAPI_LIB hidapi-hidraw REQUIRED)
 find_path(HIDAPI_INC hidapi/hidapi.h REQUIRED)
 
@@ -15,7 +14,6 @@ add_executable(sc2gyrodsu
     src/hiddev.cpp
     src/triton.cpp
     src/dsu.cpp
-    src/cemuhook.cpp
 )
 
 target_include_directories(sc2gyrodsu PRIVATE inc ${HIDAPI_INC})
