@@ -12,21 +12,16 @@ class HidSlot {
 public:
     HidSlot(hid_device* dev, int dsuSlot, uint16_t pid, std::string serial);
     ~HidSlot();
-
     HidSlot(const HidSlot&) = delete;
     HidSlot& operator=(const HidSlot&) = delete;
-
     bool readOne(ControllerState& out);
-
     int         dsuSlot;
     uint16_t    pid;
     std::string serial;
-
 private:
     void sendFeatureReport(uint8_t setting, uint16_t value);
     void refreshLizard();
     void refreshImu();
-
     hid_device*  dev_;
     std::chrono::steady_clock::time_point lastLizard_;
     std::chrono::steady_clock::time_point lastImu_;
@@ -36,12 +31,10 @@ private:
 
 class HidManager {
 public:
-    HidManager();
-    ~HidManager();
-
+    HidManager()  { hid_init(); }
+    ~HidManager() { hid_exit(); }
     void scan(std::vector<std::unique_ptr<HidSlot>>& active, bool slotUsed[4]);
     void probe();
-
 private:
     static bool isActive(const std::vector<std::unique_ptr<HidSlot>>& active,
                          const std::string& serial);
