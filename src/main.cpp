@@ -15,7 +15,6 @@ using namespace std::chrono_literals;
 using namespace sc2;
 
 static std::atomic<bool> gShutdown{false};
-static DsuServer* gServer = nullptr;
 
 static void signalHandler(int sig) {
     fprintf(stderr, "\nsc2gyrodsu: signal %d — shutting down\n", sig);
@@ -30,11 +29,9 @@ struct SlotReader {
 
 static void slotReaderThread(HidSlot* slot, DsuServer* server, std::atomic<bool>& done) {
     const auto SILENCE_MAX = 2000ms;
-
-    int  errorCnt  = 0;
-    auto lastSample = std::chrono::steady_clock::now();
-    uint32_t lastTs = 0;
-    int staleCnt = 0;
+    int      staleCnt  = 0;
+    auto     lastSample = std::chrono::steady_clock::now();
+    uint32_t lastTs    = 0;
 
     fprintf(stderr, "triton-%d: reader started (serial=%s)\n",
             slot->dsuSlot, slot->serial.c_str());
@@ -44,27 +41,17 @@ static void slotReaderThread(HidSlot* slot, DsuServer* server, std::atomic<bool>
         bool ok = slot->readOne(state);
 
         if (ok) {
-            errorCnt   = 0;
             lastSample = std::chrono::steady_clock::now();
-
             if (state.imu.timestamp_us == lastTs) {
                 staleCnt++;
-                if (staleCnt >= 50) {
-                    fprintf(stderr, "triton-%d: IMU frozen — forcing IMU back on\n",
-                            slot->dsuSlot);
-                    staleCnt = 0;
-                    slot->forceImu();
-                }
             } else {
                 staleCnt = 0;
                 lastTs   = state.imu.timestamp_us;
                 server->pushState(state);
             }
         } else {
-            errorCnt = 0;
             if (std::chrono::steady_clock::now() - lastSample >= SILENCE_MAX) {
-                fprintf(stderr, "triton-%d: no data for 2s — disconnecting\n",
-                        slot->dsuSlot);
+                fprintf(stderr, "triton-%d: no data for 2s — disconnecting\n", slot->dsuSlot);
                 break;
             }
         }
@@ -101,7 +88,6 @@ int main(int argc, char* argv[]) {
     if (probe) { manager.probe(); return 0; }
 
     DsuServer server(port, expose);
-    gServer = &server;
     server.start();
 
     fprintf(stderr, "sc2gyrodsu draait. Wacht op emulator op 127.0.0.1:%u\n", port);
@@ -110,21 +96,15 @@ int main(int argc, char* argv[]) {
     std::vector<std::unique_ptr<SlotReader>> readers;
 
     while (!gShutdown) {
-        // Reap finished readers
         for (auto it = readers.begin(); it != readers.end(); ) {
             auto& r = **it;
             if (r.done) {
-                int s = r.slot->dsuSlot;
-                fprintf(stderr, "scanner: freeing slot %d\n", s);
-                slotUsed[s] = false;
+                slotUsed[r.slot->dsuSlot] = false;
                 if (r.thread.joinable()) r.thread.join();
                 it = readers.erase(it);
-            } else {
-                ++it;
-            }
+            } else ++it;
         }
 
-        // Scan for new devices
         struct hid_device_info* devs = hid_enumerate(VID_VALVE, 0);
         struct hid_device_info* cur  = devs;
         while (cur && !gShutdown) {
@@ -148,8 +128,7 @@ int main(int argc, char* argv[]) {
                 if (!dev) { cur = cur->next; continue; }
 
                 fprintf(stderr, "scanner: PID %04X (%s) serial=%s → slot %d\n",
-                    cur->product_id, pidLabel(cur->product_id),
-                    serial.c_str(), slot);
+                    cur->product_id, pidLabel(cur->product_id), serial.c_str(), slot);
 
                 slotUsed[slot] = true;
                 auto reader = std::make_unique<SlotReader>();
@@ -164,7 +143,6 @@ int main(int argc, char* argv[]) {
             cur = cur->next;
         }
         hid_free_enumeration(devs);
-
         std::this_thread::sleep_for(500ms);
     }
 
