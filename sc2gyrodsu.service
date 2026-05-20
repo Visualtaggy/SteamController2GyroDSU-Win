@@ -1,0 +1,13 @@
+[Unit]
+Description=Steam Controller 2 Gyro DSU Server
+After=sockets.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+ExecStart=%h/sc2gyrodsu/sc2gyrodsu
+
+[Install]
+WantedBy=default.target
