@@ -1,8 +1,8 @@
 #pragma once
 #include "triton.h"
 #include <hidapi/hidapi.h>
-#include <string>
 #include <vector>
+#include <string>
 #include <memory>
 #include <chrono>
 
@@ -17,7 +17,6 @@ public:
     HidSlot& operator=(const HidSlot&) = delete;
 
     bool readOne(ControllerState& out);
-    void forceImu();
 
     int         dsuSlot;
     uint16_t    pid;
@@ -37,9 +36,15 @@ private:
 
 class HidManager {
 public:
-    HidManager()  { hid_init(); }
-    ~HidManager() { hid_exit(); }
+    HidManager();
+    ~HidManager();
+
+    void scan(std::vector<std::unique_ptr<HidSlot>>& active, bool slotUsed[4]);
     void probe();
+
+private:
+    static bool isActive(const std::vector<std::unique_ptr<HidSlot>>& active,
+                         const std::string& serial);
 };
 
 } // namespace sc2
