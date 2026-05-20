@@ -79,7 +79,7 @@ struct AxisMap {
     float applyZ(const float raw[3]) const { return inv_z ? -raw[src_z] : raw[src_z]; }
 };
 
-constexpr AxisMap DEFAULT_GYRO  = { 0, true,  2, true,  1, false };
+constexpr AxisMap DEFAULT_GYRO  = { 0, true,  2, false, 1, true  };
 constexpr AxisMap DEFAULT_ACCEL = { 0, true,  2, true,  1, false };
 
 bool isTritonPid(uint16_t pid);
