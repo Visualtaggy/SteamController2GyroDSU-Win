@@ -103,21 +103,7 @@ bool HidSlot::readOne(ControllerState& out) {
     out.imu.gyro_dps[2]  = gyroMap_.applyZ(rawG);
     out.slot             = dsuSlot;
 
-    fprintf(stderr, "gyro: %+7.2f %+7.2f %+7.2f  accel: %+5.3f %+5.3f %+5.3f\n",
-        out.imu.gyro_dps[0], out.imu.gyro_dps[1], out.imu.gyro_dps[2],
-        out.imu.accel_g[0],  out.imu.accel_g[1],  out.imu.accel_g[2]);
-
     return true;
-}
-
-HidManager::HidManager() { hid_init(); }
-HidManager::~HidManager() { hid_exit(); }
-
-bool HidManager::isActive(const std::vector<std::unique_ptr<HidSlot>>& active,
-                           const std::string& serial) {
-    for (auto& s : active)
-        if (s->serial == serial) return true;
-    return false;
 }
 
 void HidManager::scan(std::vector<std::unique_ptr<HidSlot>>& active, bool slotUsed[4]) {
