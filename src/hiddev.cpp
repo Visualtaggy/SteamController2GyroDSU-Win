@@ -106,6 +106,16 @@ bool HidSlot::readOne(ControllerState& out) {
     return true;
 }
 
+HidManager::HidManager() { hid_init(); }
+HidManager::~HidManager() { hid_exit(); }
+
+bool HidManager::isActive(const std::vector<std::unique_ptr<HidSlot>>& active,
+                           const std::string& serial) {
+    for (auto& s : active)
+        if (s->serial == serial) return true;
+    return false;
+}
+
 void HidManager::scan(std::vector<std::unique_ptr<HidSlot>>& active, bool slotUsed[4]) {
     struct hid_device_info* devs = hid_enumerate(VID_VALVE, 0);
     struct hid_device_info* cur  = devs;
