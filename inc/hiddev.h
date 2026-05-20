@@ -31,8 +31,8 @@ private:
 
 class HidManager {
 public:
-    HidManager()  { hid_init(); }
-    ~HidManager() { hid_exit(); }
+    HidManager();
+    ~HidManager();
     void scan(std::vector<std::unique_ptr<HidSlot>>& active, bool slotUsed[4]);
     void probe();
 private:
