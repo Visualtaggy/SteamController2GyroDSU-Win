@@ -71,16 +71,16 @@ struct ControllerState {
 
 struct AxisMap {
     int src_x = 0; bool inv_x = false;
-    int src_y = 2; bool inv_y = true;
-    int src_z = 1; bool inv_z = false;
+    int src_y = 1; bool inv_y = false;
+    int src_z = 2; bool inv_z = false;
 
     float applyX(const float raw[3]) const { return inv_x ? -raw[src_x] : raw[src_x]; }
     float applyY(const float raw[3]) const { return inv_y ? -raw[src_y] : raw[src_y]; }
     float applyZ(const float raw[3]) const { return inv_z ? -raw[src_z] : raw[src_z]; }
 };
 
-constexpr AxisMap DEFAULT_GYRO  = { 0, true,  2, false, 1, true  };
-constexpr AxisMap DEFAULT_ACCEL = { 0, true,  2, true,  1, false };
+constexpr AxisMap DEFAULT_GYRO  = { 0, false, 1, false, 2, false };
+constexpr AxisMap DEFAULT_ACCEL = { 0, false, 1, false, 2, false };
 
 bool isTritonPid(uint16_t pid);
 const char* pidLabel(uint16_t pid);
