@@ -5,30 +5,24 @@
 #include <functional>
 #include <atomic>
 #include <thread>
+#include <mutex>
+#include <unordered_map>
+#include <chrono>
+#include <netinet/in.h>
 
 namespace sc2 {
 
-// Cemuhook DSU UDP server supporting up to 4 controller slots.
 class DsuServer {
 public:
     DsuServer(uint16_t port, bool expose);
     ~DsuServer();
 
-    // Non-copyable
     DsuServer(const DsuServer&) = delete;
     DsuServer& operator=(const DsuServer&) = delete;
 
-    // Push a new controller state to all subscribers.
-    // Thread-safe — call from controller thread.
     void pushState(const ControllerState& state);
-
-    // Mark a slot as disconnected.
     void setDisconnected(int slot);
-
-    // True when at least one subscriber is active.
     bool hasSubscribers() const;
-
-    // Start/stop the UDP listener thread.
     void start();
     void stop();
 
