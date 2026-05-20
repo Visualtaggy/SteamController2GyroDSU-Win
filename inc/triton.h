@@ -5,10 +5,8 @@
 
 namespace sc2 {
 
-// Valve USB Vendor ID
 constexpr uint16_t VID_VALVE = 0x28DE;
 
-// Steam Controller 2 / Triton family PIDs
 constexpr uint16_t PID_TRITON_WIRED   = 0x1302;
 constexpr uint16_t PID_TRITON_BLE     = 0x1303;
 constexpr uint16_t PID_PROTEUS_PUCK   = 0x1304;
@@ -18,26 +16,20 @@ constexpr std::array<uint16_t, 4> TRITON_PIDS = {
     PID_TRITON_WIRED, PID_TRITON_BLE, PID_PROTEUS_PUCK, PID_NEREID_PUCK
 };
 
-// HID report IDs
-constexpr uint8_t REPORT_ID_STATE     = 0x42;  // USB/dongle state report
-constexpr uint8_t REPORT_ID_STATE_BLE = 0x45;  // BLE state report
+constexpr uint8_t REPORT_ID_STATE     = 0x42;
+constexpr uint8_t REPORT_ID_STATE_BLE = 0x45;
 constexpr uint8_t FEATURE_REPORT_ID   = 0x01;
 
-// Feature report settings
-constexpr uint8_t ID_SET_SETTINGS     = 0x87;
-constexpr uint8_t SETTING_LIZARD_MODE = 9;
-constexpr uint8_t SETTING_IMU_MODE    = 48;
-constexpr uint16_t LIZARD_MODE_OFF    = 0;
+constexpr uint8_t  ID_SET_SETTINGS     = 0x87;
+constexpr uint8_t  SETTING_LIZARD_MODE = 9;
+constexpr uint8_t  SETTING_IMU_MODE    = 48;
+constexpr uint16_t LIZARD_MODE_OFF     = 0;
 constexpr uint16_t IMU_MODE_GYRO_ACCEL = 0x0008 | 0x0010;
 
-// Report sizes
 constexpr size_t FEATURE_REPORT_SIZE  = 64;
 constexpr size_t INPUT_REPORT_SIZE    = 64;
+constexpr size_t IMU_OFFSET           = 29;
 
-// IMU data offset inside the state payload (after report ID byte stripped)
-constexpr size_t IMU_OFFSET = 29;
-
-// Button bitmasks (inside payload bytes 1-4)
 namespace button {
     constexpr uint32_t A          = 0x0000'0001;
     constexpr uint32_t B          = 0x0000'0002;
@@ -63,8 +55,8 @@ namespace button {
 
 struct ImuSample {
     uint32_t timestamp_us = 0;
-    float    accel_g[3]   = {};   // X, Y, Z in g
-    float    gyro_dps[3]  = {};   // X, Y, Z in degrees/second
+    float    accel_g[3]   = {};
+    float    gyro_dps[3]  = {};
 };
 
 struct ControllerState {
@@ -74,10 +66,9 @@ struct ControllerState {
     int16_t  left_stick[2] = {};
     int16_t  right_stick[2]= {};
     ImuSample imu;
-    int      slot          = 0;   // DSU slot index (0-3)
+    int      slot          = 0;
 };
 
-// Gyro axis remapping (same defaults as sc2dsu for Eden/Yuzu)
 struct AxisMap {
     int src_x = 0; bool inv_x = false;
     int src_y = 2; bool inv_y = true;
@@ -88,7 +79,7 @@ struct AxisMap {
     float applyZ(const float raw[3]) const { return inv_z ? -raw[src_z] : raw[src_z]; }
 };
 
-constexpr AxisMap DEFAULT_GYRO  = { 0, false, 2, true,  1, false };
+constexpr AxisMap DEFAULT_GYRO  = { 0, true,  2, true,  1, false };
 constexpr AxisMap DEFAULT_ACCEL = { 0, true,  2, true,  1, false };
 
 bool isTritonPid(uint16_t pid);
