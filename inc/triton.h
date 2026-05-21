@@ -80,7 +80,7 @@ struct AxisMap {
 };
 
 constexpr AxisMap DEFAULT_GYRO  = { 0, false, 2, true,  1, false };
-constexpr AxisMap DEFAULT_ACCEL = { 0, false, 2, false, 1, false };
+constexpr AxisMap DEFAULT_ACCEL = { 1, false, 2, true,  0, false };
 
 bool isTritonPid(uint16_t pid);
 const char* pidLabel(uint16_t pid);
