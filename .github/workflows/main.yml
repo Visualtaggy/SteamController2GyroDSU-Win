@@ -1,27 +1,22 @@
 name: Build and Release
-
 on:
   push:
     branches: [main]
   release:
     types: [created]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake g++ pkg-config libhidapi-dev zip
-
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
-
       - name: Package
         run: |
           mkdir -p SteamControllerGyroDSUSetup
@@ -33,17 +28,15 @@ jobs:
           cp SteamControllerGyroDSU.desktop SteamControllerGyroDSUSetup/
           cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SteamControllerGyroDSU
           path: SteamControllerGyroDSUSetup.zip
-
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             SteamControllerGyroDSUSetup.zip
-            SteamControllerGyroDSU.desktop
+            SteamControllerGyroDSUSetup/SteamControllerGyroDSU.desktop
