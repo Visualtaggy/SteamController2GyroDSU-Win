@@ -1,11 +1,19 @@
 #!/bin/sh
-echo "Uninstalling SteamControllerGyroDSU..."
-systemctl --user stop SteamControllerGyroDSU.service 2>/dev/null
-systemctl --user disable SteamControllerGyroDSU.service 2>/dev/null
-rm -f "$HOME/.config/systemd/user/SteamControllerGyroDSU.service"
-rm -rf "$HOME/SteamControllerGyroDSU"
-rm -f "$HOME/Desktop/Update SteamControllerGyroDSU.desktop"
-rm -f "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop"
-echo "Uninstalled."
-read -n 1 -s -r -p "Press any key to exit."
-echo ""
+
+echo "Uninstalling the service"
+systemctl --user -q stop SteamControllerGyroDSU.service >/dev/null 2>&1
+systemctl --user -q disable SteamControllerGyroDSU.service >/dev/null 2>&1
+rm $HOME/.config/systemd/user/SteamControllerGyroDSU.service >/dev/null 2>&1
+
+echo "Removing files"
+rm $HOME/SteamControllerGyroDSU/SteamControllerGyroDSU >/dev/null 2>&1
+rm $HOME/SteamControllerGyroDSU/update.sh >/dev/null 2>&1
+rm $HOME/SteamControllerGyroDSU/uninstall.sh >/dev/null 2>&1
+rm -d $HOME/SteamControllerGyroDSU >/dev/null 2>&1
+rm $HOME/Desktop/update-steamcontrollergyrodsu.desktop >/dev/null 2>&1
+rm $HOME/Desktop/uninstall-steamcontrollergyrodsu.desktop >/dev/null 2>&1
+
+echo "Uninstalling complete."
+
+read -n 1 -s -r -p "Finished. Press any key to exit."
+echo " "
