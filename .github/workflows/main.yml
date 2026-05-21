@@ -1,6 +1,10 @@
-name: Build
+name: Build and Release
 
-on: [push]
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -11,18 +15,31 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ pkg-config libhidapi-dev
+          sudo apt-get install -y cmake g++ pkg-config libhidapi-dev zip
 
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
 
-      - name: Upload binary
+      - name: Package
+        run: |
+          mkdir -p SteamControllerGyroDSUSetup
+          cp build/sc2gyrodsu SteamControllerGyroDSUSetup/SteamControllerGyroDSU
+          cp install.sh SteamControllerGyroDSUSetup/
+          cp sc2gyrodsu.service SteamControllerGyroDSUSetup/
+          cp update.sh SteamControllerGyroDSUSetup/
+          cp uninstall.sh SteamControllerGyroDSUSetup/
+          zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sc2gyrodsu
-          path: |
-            build/sc2gyrodsu
-            install.sh
-            sc2gyrodsu.service
+          name: SteamControllerGyroDSU
+          path: SteamControllerGyroDSUSetup.zip
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SteamControllerGyroDSUSetup.zip
