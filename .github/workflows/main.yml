@@ -30,7 +30,7 @@ jobs:
           cp sc2gyrodsu.service SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
           cp update.sh SteamControllerGyroDSUSetup/
           cp uninstall.sh SteamControllerGyroDSUSetup/
-          cp update-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
+          cp SteamControllerGyroDSU.desktop SteamControllerGyroDSUSetup/
           cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
 
@@ -46,4 +46,4 @@ jobs:
         with:
           files: |
             SteamControllerGyroDSUSetup.zip
-            update-steamcontrollergyrodsu.desktop
+            SteamControllerGyroDSU.desktop
