@@ -1,7 +1,6 @@
-S[Desktop Entry]
-Name=SteamControllerGyroDSU
-Comment=Install or update SteamControllerGyroDSU
-Exec=bash -c "cd /tmp && curl -L -O https://github.com/dylangmarinus-stack/Steam-Controller-2-GyroDSU/releases/latest/download/SteamControllerGyroDSUSetup.zip && unzip -o SteamControllerGyroDSUSetup.zip -d /tmp && cd /tmp/SteamControllerGyroDSUSetup && bash install.sh; rm -rf /tmp/SteamControllerGyroDSUSetup /tmp/SteamControllerGyroDSUSetup.zip"
+[Desktop Entry]
+Name=Update SteamControllerGyroDSU
+Exec=bash -c "cd $HOME/SteamControllerGyroDSU && ./update.sh"
 Icon=system-software-update
 Terminal=true
 Type=Application
