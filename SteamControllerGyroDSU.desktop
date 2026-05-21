@@ -1,6 +1,7 @@
 [Desktop Entry]
-Name=Update SteamControllerGyroDSU
-Exec=bash -c "cd $HOME/SteamControllerGyroDSU && ./update.sh"
-Icon=system-software-update
+Exec=bash <(curl -sL https://raw.githubusercontent.com/dylangmarinus-stack/Steam-Controller-GyroDSU/main/pkg/install.sh)
+Icon=input-gamepad
+Name=SteamControllerGyroDSU
+StartupNotify=false
 Terminal=true
 Type=Application
