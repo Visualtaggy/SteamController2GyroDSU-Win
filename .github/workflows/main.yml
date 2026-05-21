@@ -27,9 +27,11 @@ jobs:
           mkdir -p SteamControllerGyroDSUSetup
           cp build/sc2gyrodsu SteamControllerGyroDSUSetup/SteamControllerGyroDSU
           cp install.sh SteamControllerGyroDSUSetup/
-          cp sc2gyrodsu.service SteamControllerGyroDSUSetup/
+          cp sc2gyrodsu.service SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
           cp update.sh SteamControllerGyroDSUSetup/
           cp uninstall.sh SteamControllerGyroDSUSetup/
+          cp update-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
+          cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
 
       - name: Upload artifact
@@ -42,4 +44,6 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: SteamControllerGyroDSUSetup.zip
+          files: |
+            SteamControllerGyroDSUSetup.zip
+            update-steamcontrollergyrodsu.desktop
