@@ -2,32 +2,63 @@
 cd "$(dirname "$(readlink -f "$0")")"
 
 echo "Stopping service if running..."
-systemctl --user -q stop sc2gyrodsu.service 2>/dev/null
-systemctl --user -q disable sc2gyrodsu.service 2>/dev/null
+systemctl --user -q stop SteamControllerGyroDSU.service 2>/dev/null
+systemctl --user -q disable SteamControllerGyroDSU.service 2>/dev/null
 
-echo "Copying binary..."
-mkdir -p "$HOME/sc2gyrodsu"
-if cp sc2gyrodsu "$HOME/sc2gyrodsu/sc2gyrodsu" && chmod +x "$HOME/sc2gyrodsu/sc2gyrodsu"; then
-    echo "Binary installed."
-else
-    echo "ERROR: Failed to copy binary."
-    exit 1
-fi
+echo "Installing binary..."
+mkdir -p "$HOME/SteamControllerGyroDSU"
+cp SteamControllerGyroDSU "$HOME/SteamControllerGyroDSU/"
+chmod +x "$HOME/SteamControllerGyroDSU/SteamControllerGyroDSU"
+
+echo "Installing scripts..."
+cp update.sh "$HOME/SteamControllerGyroDSU/"
+cp uninstall.sh "$HOME/SteamControllerGyroDSU/"
+chmod +x "$HOME/SteamControllerGyroDSU/update.sh"
+chmod +x "$HOME/SteamControllerGyroDSU/uninstall.sh"
 
 echo "Installing service..."
 mkdir -p "$HOME/.config/systemd/user"
-cp sc2gyrodsu.service "$HOME/.config/systemd/user/"
+cat > "$HOME/.config/systemd/user/SteamControllerGyroDSU.service" << EOF
+[Unit]
+Description=Steam Controller Gyro DSU Server
+After=sockets.target
+StartLimitIntervalSec=0
 
-if systemctl --user enable --now sc2gyrodsu.service; then
-    echo "Service installed and started."
-else
-    echo "ERROR: Failed to enable service."
-    exit 1
-fi
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+ExecStart=$HOME/SteamControllerGyroDSU/SteamControllerGyroDSU --port 26761
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user enable --now SteamControllerGyroDSU.service
+
+echo "Installing desktop shortcuts..."
+cat > "$HOME/Desktop/Update SteamControllerGyroDSU.desktop" << EOF
+[Desktop Entry]
+Name=Update SteamControllerGyroDSU
+Exec=$HOME/SteamControllerGyroDSU/update.sh
+Icon=system-software-update
+Terminal=true
+Type=Application
+EOF
+chmod +x "$HOME/Desktop/Update SteamControllerGyroDSU.desktop"
+
+cat > "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop" << EOF
+[Desktop Entry]
+Name=Uninstall SteamControllerGyroDSU
+Exec=$HOME/SteamControllerGyroDSU/uninstall.sh
+Icon=edit-delete
+Terminal=true
+Type=Application
+EOF
+chmod +x "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop"
 
 echo ""
-echo "Done! sc2gyrodsu is running."
-echo "Point your emulator at 127.0.0.1:26760"
+echo "Done! SteamControllerGyroDSU is running on port 26761."
+echo "Point your emulator at 127.0.0.1:26761"
+read -n 1 -s -r -p "Press any key to exit."
 echo ""
-echo "To check status: systemctl --user status sc2gyrodsu"
-echo "To view logs:    journalctl --user -u sc2gyrodsu -f"
