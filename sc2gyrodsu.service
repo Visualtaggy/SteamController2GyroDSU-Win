@@ -1,5 +1,5 @@
 [Unit]
-Description=Steam Controller 2 Gyro DSU Server
+Description=Steam Controller Gyro DSU Server
 After=sockets.target
 StartLimitIntervalSec=0
 
@@ -7,7 +7,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-ExecStart=%h/sc2gyrodsu/sc2gyrodsu
+ExecStart=%h/SteamControllerGyroDSU/SteamControllerGyroDSU --port 26761
 
 [Install]
 WantedBy=default.target
