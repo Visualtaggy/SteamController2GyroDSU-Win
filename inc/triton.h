@@ -79,8 +79,15 @@ struct AxisMap {
     float applyZ(const float raw[3]) const { return inv_z ? -raw[src_z] : raw[src_z]; }
 };
 
+// DSU output mapping (based on SteamDeckGyroDSU cemuhookadapter.cpp):
+// accel DSU X = -AccelRightToLeft = -raw[0]
+// accel DSU Y = -AccelFrontToBack = -raw[2]
+// accel DSU Z =  AccelTopToBottom =  raw[1]
+// gyro  DSU X =  GyroRightToLeft  =  raw[0]
+// gyro  DSU Y = -GyroFrontToBack  = -raw[2]
+// gyro  DSU Z =  GyroTopToBottom  =  raw[1]
 constexpr AxisMap DEFAULT_GYRO  = { 0, false, 2, true,  1, false };
-constexpr AxisMap DEFAULT_ACCEL = { 1, false, 2, true,  0, false };
+constexpr AxisMap DEFAULT_ACCEL = { 0, true,  2, true,  1, false };
 
 bool isTritonPid(uint16_t pid);
 const char* pidLabel(uint16_t pid);
