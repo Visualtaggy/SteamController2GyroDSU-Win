@@ -70,6 +70,7 @@ if(Qt6_FOUND)
         src/gui/test_tab.cpp
         src/config.cpp
         src/triton.cpp
+        assets/sc2gyrodsu.qrc
     )
 
     target_include_directories(sc2gyrodsu-config PRIVATE inc src ${HIDAPI_INC})

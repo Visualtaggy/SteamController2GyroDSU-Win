@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Controller body gradient: deep navy centre → near-black edge -->
+    <radialGradient id="bodyGrad" cx="50%" cy="32%" r="68%">
+      <stop offset="0%"   stop-color="#252548"/>
+      <stop offset="100%" stop-color="#0b0b16"/>
+    </radialGradient>
+    <!-- Trim pieces (bumpers, triggers): slightly lighter navy -->
+    <radialGradient id="trimGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%"   stop-color="#1c1c3a"/>
+      <stop offset="100%" stop-color="#09090f"/>
+    </radialGradient>
+    <!-- Thumbstick cap gradient -->
+    <radialGradient id="stickGrad" cx="35%" cy="30%" r="62%">
+      <stop offset="0%"   stop-color="#4e4e6a"/>
+      <stop offset="100%" stop-color="#18182a"/>
+    </radialGradient>
+    <!-- Subtle drop shadow on body -->
+    <filter id="shadow" x="-6%" y="-6%" width="112%" height="112%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8"
+                    flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       1. CONTROLLER BODY (single continuous path, Xbox-width /
+          PS-style button layout: D-pad upper-left, ABXY upper-right)
+       ═══════════════════════════════════════════════════════════════ -->
+  <path filter="url(#shadow)" fill="url(#bodyGrad)"
+    d="
+      M 256,98
+      C 308,95  372,99  408,112
+      C 444,125 454,155 454,196
+      L 454,264
+      C 454,298 451,324 443,350
+      C 435,376 424,400 411,418
+      C 398,436 380,448 361,451
+      C 342,454 325,444 317,426
+      C 307,405 301,374 288,361
+      C 275,348 266,344 256,344
+      C 246,344 237,348 224,361
+      C 211,374 205,405 195,426
+      C 187,444 170,454 151,451
+      C 132,448 114,436 101,418
+      C  88,400  77,376  69,350
+      C  61,324  58,298  58,264
+      L  58,196
+      C  58,155  68,125 104,112
+      C 140, 99 204, 95 256, 98
+      Z
+    "/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       2. TRIGGERS (darker wedge above bumpers)
+       ═══════════════════════════════════════════════════════════════ -->
+  <path fill="url(#trimGrad)"
+    d="M  76,104  Q 102,72 154,72  Q 188,72 194,104 Z"/>
+  <path fill="url(#trimGrad)"
+    d="M 436,104  Q 410,72 358,72  Q 324,72 318,104 Z"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       3. BUMPERS
+       ═══════════════════════════════════════════════════════════════ -->
+  <rect x="74"  y="100" width="122" height="28" rx="14" fill="url(#trimGrad)"/>
+  <rect x="316" y="100" width="122" height="28" rx="14" fill="url(#trimGrad)"/>
+  <!-- L / R labels -->
+  <text x="135" y="121" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="16" fill="#6868a8">L</text>
+  <text x="377" y="121" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="16" fill="#6868a8">R</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       4. BACK GRIP PADDLES (4 total — visible on grip flanks)
+       ═══════════════════════════════════════════════════════════════ -->
+  <!-- Left top paddle -->
+  <rect x="46" y="296" width="18" height="46" rx="9"
+        fill="#141426" stroke="#2e2e58" stroke-width="1.5"/>
+  <!-- Left bottom paddle -->
+  <rect x="46" y="352" width="18" height="46" rx="9"
+        fill="#141426" stroke="#2e2e58" stroke-width="1.5"/>
+  <!-- Right top paddle -->
+  <rect x="448" y="296" width="18" height="46" rx="9"
+        fill="#141426" stroke="#2e2e58" stroke-width="1.5"/>
+  <!-- Right bottom paddle -->
+  <rect x="448" y="352" width="18" height="46" rx="9"
+        fill="#141426" stroke="#2e2e58" stroke-width="1.5"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       5. D-PAD  (upper-left, cross shape with direction pips)
+       ═══════════════════════════════════════════════════════════════ -->
+  <g transform="translate(140,174)">
+    <rect x="-13" y="-38" width="26" height="76" rx="5" fill="#383858"/>
+    <rect x="-38" y="-13" width="76" height="26" rx="5" fill="#383858"/>
+    <!-- centre circle -->
+    <circle r="13" fill="#28284a"/>
+    <!-- direction pips -->
+    <polygon points=" 0,-30  -6,-22  6,-22" fill="#505078"/>
+    <polygon points=" 0, 30  -6, 22  6, 22" fill="#505078"/>
+    <polygon points="-30,  0 -22, -6 -22,  6" fill="#505078"/>
+    <polygon points=" 30,  0  22, -6  22,  6" fill="#505078"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       6. LEFT THUMBSTICK  (below D-pad)
+       ═══════════════════════════════════════════════════════════════ -->
+  <circle cx="176" cy="272" r="36" fill="url(#stickGrad)" stroke="#28283e" stroke-width="2"/>
+  <!-- cap highlight -->
+  <circle cx="171" cy="267" r="7" fill="#484868" opacity="0.6"/>
+  <!-- recessed centre -->
+  <circle cx="176" cy="272" r="15" fill="#14141e"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       7. LEFT SQUARE TOUCHPAD  (below left stick — SC2026 hallmark)
+       ═══════════════════════════════════════════════════════════════ -->
+  <rect x="108" y="326" width="80" height="80" rx="8"
+        fill="#0d0d22" stroke="#3838b8" stroke-width="2"/>
+  <!-- corner bracket marks show it's a touch surface -->
+  <path d="M117,335 v10 M117,335 h10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M179,335 v10 M179,335 h-10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M117,397 v-10 M117,397 h10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M179,397 v-10 M179,397 h-10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- faint crosshair — touch-surface feel -->
+  <line x1="148" y1="334" x2="148" y2="398" stroke="#222244" stroke-width="1.2"/>
+  <line x1="116" y1="366" x2="180" y2="366" stroke="#222244" stroke-width="1.2"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       8. ABXY BUTTONS  (upper-right, diamond layout)
+       ═══════════════════════════════════════════════════════════════ -->
+  <!-- Y — top, gold -->
+  <circle cx="372" cy="155" r="21" fill="#a07c08"/>
+  <circle cx="372" cy="155" r="18" fill="#c89c10"/>
+  <text x="372" y="162" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="20" fill="#fff">Y</text>
+  <!-- X — left, blue -->
+  <circle cx="344" cy="183" r="21" fill="#0e38a0"/>
+  <circle cx="344" cy="183" r="18" fill="#1a4ec8"/>
+  <text x="344" y="190" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="20" fill="#fff">X</text>
+  <!-- B — right, red -->
+  <circle cx="400" cy="183" r="21" fill="#980e0e"/>
+  <circle cx="400" cy="183" r="18" fill="#c81818"/>
+  <text x="400" y="190" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="20" fill="#fff">B</text>
+  <!-- A — bottom, green -->
+  <circle cx="372" cy="211" r="21" fill="#0e6818"/>
+  <circle cx="372" cy="211" r="18" fill="#1a8822"/>
+  <text x="372" y="218" text-anchor="middle" font-family="'Arial',sans-serif"
+        font-weight="bold" font-size="20" fill="#fff">A</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       9. RIGHT THUMBSTICK  (below ABXY)
+       ═══════════════════════════════════════════════════════════════ -->
+  <circle cx="336" cy="272" r="36" fill="url(#stickGrad)" stroke="#28283e" stroke-width="2"/>
+  <circle cx="331" cy="267" r="7" fill="#484868" opacity="0.6"/>
+  <circle cx="336" cy="272" r="15" fill="#14141e"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       10. RIGHT SQUARE TOUCHPAD  (below right stick)
+       ═══════════════════════════════════════════════════════════════ -->
+  <rect x="324" y="326" width="80" height="80" rx="8"
+        fill="#0d0d22" stroke="#3838b8" stroke-width="2"/>
+  <path d="M333,335 v10 M333,335 h10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M395,335 v10 M395,335 h-10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M333,397 v-10 M333,397 h10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M395,397 v-10 M395,397 h-10" stroke="#5050d8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <line x1="364" y1="334" x2="364" y2="398" stroke="#222244" stroke-width="1.2"/>
+  <line x1="332" y1="366" x2="396" y2="366" stroke="#222244" stroke-width="1.2"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       11. STEAM BUTTON  (centre, Steam blue, gear logo)
+       ═══════════════════════════════════════════════════════════════ -->
+  <circle cx="256" cy="183" r="29" fill="#0d54a8"/>
+  <circle cx="256" cy="183" r="25" fill="#1470d4"/>
+  <!-- Steam gear: inner ring -->
+  <circle cx="256" cy="183" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>
+  <!-- Gear teeth (8 rounded pegs around the ring, all in white) -->
+  <g fill="white">
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(  0 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate( 45 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate( 90 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(135 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(180 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(225 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(270 256 183)"/>
+    <rect x="254" y="156" width="4" height="8" rx="2" transform="rotate(315 256 183)"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       12. VIEW / MENU BUTTONS  (flanking Steam button)
+       ═══════════════════════════════════════════════════════════════ -->
+  <!-- View (left of Steam) — two overlapping rounded squares -->
+  <g transform="translate(212,200)" fill="none" stroke="#5050a0" stroke-width="2">
+    <rect x="-10" y="-7" width="13" height="13" rx="2"/>
+    <rect x="-4"  y="-10" width="13" height="13" rx="2"/>
+  </g>
+  <!-- Menu (right of Steam) — three horizontal lines -->
+  <g transform="translate(300,200)" stroke="#5050a0" stroke-width="2.5" stroke-linecap="round">
+    <line x1="-9" y1="-6" x2="9" y2="-6"/>
+    <line x1="-9" y1=" 0" x2="9" y2=" 0"/>
+    <line x1="-9" y1=" 6" x2="9" y2=" 6"/>
+  </g>
+
+</svg>

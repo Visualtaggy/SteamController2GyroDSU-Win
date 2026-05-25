@@ -23,6 +23,7 @@ jobs:
             libhidapi-dev \
             libudev-dev \
             qt6-base-dev libgl1-mesa-dev \
+            librsvg2-bin \
             zip
 
       - name: Build
@@ -53,6 +54,14 @@ jobs:
           cp sc2gyrodsu.service                      SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
           cp SteamControllerGyroDSU.desktop          SteamControllerGyroDSUSetup/
           cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
+
+          # Application icon (SVG + rasterised PNG fallbacks)
+          cp assets/icons/sc2gyrodsu.svg SteamControllerGyroDSUSetup/
+          for SIZE in 16 32 48 128 256; do
+            rsvg-convert -w "$SIZE" -h "$SIZE" \
+              assets/icons/sc2gyrodsu.svg \
+              -o "SteamControllerGyroDSUSetup/sc2gyrodsu_${SIZE}.png"
+          done
 
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
 

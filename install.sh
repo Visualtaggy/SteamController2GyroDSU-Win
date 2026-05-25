@@ -160,6 +160,46 @@ systemctl --user daemon-reload
 systemctl --user enable --now SteamControllerGyroDSU.service
 ok "Service enabled and started"
 
+# ── Icon installation ────────────────────────────────────────────────────────
+hdr "Installing application icon"
+ICON_SCALABLE="$HOME/.local/share/icons/hicolor/scalable/apps"
+mkdir -p "$ICON_SCALABLE"
+
+if [ -f "$SCRIPT_DIR/sc2gyrodsu.svg" ]; then
+    cp "$SCRIPT_DIR/sc2gyrodsu.svg" "$ICON_SCALABLE/sc2gyrodsu.svg"
+    ok "SVG icon installed"
+
+    # Install pre-rendered PNG fallbacks bundled in the release package.
+    for SIZE in 16 32 48 128 256; do
+        _PNG="$SCRIPT_DIR/sc2gyrodsu_${SIZE}.png"
+        if [ -f "$_PNG" ]; then
+            ICON_PNG="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
+            mkdir -p "$ICON_PNG"
+            cp "$_PNG" "$ICON_PNG/sc2gyrodsu.png"
+            ok "${SIZE}x${SIZE} PNG icon installed"
+        fi
+    done
+
+    # If no PNGs were bundled but rsvg-convert is present, generate them live.
+    if ! ls "$SCRIPT_DIR"/sc2gyrodsu_*.png >/dev/null 2>&1 \
+       && command -v rsvg-convert >/dev/null 2>&1; then
+        for SIZE in 16 32 48 128 256; do
+            ICON_PNG="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
+            mkdir -p "$ICON_PNG"
+            rsvg-convert -w "$SIZE" -h "$SIZE" \
+                "$ICON_SCALABLE/sc2gyrodsu.svg" \
+                -o "$ICON_PNG/sc2gyrodsu.png" 2>/dev/null \
+                && ok "${SIZE}x${SIZE} PNG icon generated"
+        done
+    fi
+
+    # Refresh icon caches (best-effort — not all envs have these tools).
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    xdg-icon-resource forceupdate 2>/dev/null || true
+else
+    warn "sc2gyrodsu.svg not found in package — icon may fall back to 'input-gamepad'"
+fi
+
 # ── Desktop shortcuts + app menu ────────────────────────────────────────────
 hdr "Installing desktop shortcuts"
 DESKTOP_DIR="$HOME/Desktop"
@@ -213,7 +253,7 @@ Name=SteamControllerGyroDSU Config
 GenericName=Gyro DSU Configuration
 Comment=Configure axis mapping and calibrate gyro for Steam Controller 2
 Exec=@INSTALL_DIR@/sc2gyrodsu-config
-Icon=input-gamepad
+Icon=sc2gyrodsu
 Terminal=false
 Categories=Game;Settings;
 Keywords=steam;controller;gyro;dsu;cemuhook;calibrate;
