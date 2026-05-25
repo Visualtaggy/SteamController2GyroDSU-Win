@@ -63,6 +63,7 @@ if(Qt6_FOUND)
     add_executable(sc2gyrodsu-config
         src/gui/configapp.cpp
         src/gui/mainwindow.cpp
+        src/gui/axis_wizard.cpp
         src/gui/calibworker.cpp
         src/gui/dsu_client.cpp
         src/gui/controller_view.cpp

@@ -26,6 +26,7 @@ private slots:
     void onServiceRestart();
     void onSaveApply();
     void onResetDefaults();
+    void onAxisWizard();
     void onStartCalibration();
     void onCalibProgress(int pct);
     void onCalibDone(float bx, float by, float bz, QString error);
@@ -56,10 +57,11 @@ private:
 
     // ── axis tab ──
     // [0]=X [1]=Y [2]=Z output axis; gyro + accel each
-    QComboBox* gSrc_[3] = {};
-    QCheckBox* gInv_[3] = {};
-    QComboBox* aSrc_[3] = {};
-    QCheckBox* aInv_[3] = {};
+    QComboBox*   gSrc_[3]    = {};
+    QCheckBox*   gInv_[3]    = {};
+    QComboBox*   aSrc_[3]    = {};
+    QCheckBox*   aInv_[3]    = {};
+    QPushButton* wizardBtn_  = nullptr;
 
     // ── calibration tab ──
     QLabel*       biasLbl_[3]    = {};   // current bias display

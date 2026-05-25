@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "calibworker.h"
+#include "axis_wizard.h"
 #include <QApplication>
 #include <QWidget>
 #include <QVBoxLayout>
@@ -159,6 +160,20 @@ QWidget* MainWindow::buildAxisTab() {
     vlay->setContentsMargins(12, 12, 12, 12);
     vlay->setSpacing(12);
 
+    // Auto-detect wizard button
+    auto* wizRow = new QHBoxLayout;
+    wizardBtn_ = new QPushButton("⬤  Auto-detect Axis Mapping…");
+    wizardBtn_->setToolTip(
+        "Launch the wizard to automatically detect the correct\n"
+        "axis mapping by guiding you through four short gestures.");
+    QFont wf = wizardBtn_->font();
+    wf.setBold(true);
+    wizardBtn_->setFont(wf);
+    connect(wizardBtn_, &QPushButton::clicked, this, &MainWindow::onAxisWizard);
+    wizRow->addWidget(wizardBtn_);
+    wizRow->addStretch();
+    vlay->addLayout(wizRow);
+
     // Gyro group
     auto* gyroBox = new QGroupBox("Gyroscope axis mapping");
     auto* gLay    = new QFormLayout(gyroBox);
@@ -177,7 +192,8 @@ QWidget* MainWindow::buildAxisTab() {
 
     auto* hint = new QLabel(
         "<i>Default mapping follows SteamDeckGyroDSU orientation.<br>"
-        "Change only if your emulator receives incorrect gyro orientation.</i>");
+        "Use <b>Auto-detect</b> above if your emulator receives incorrect "
+        "gyro orientation.</i>");
     hint->setWordWrap(true);
     vlay->addWidget(hint);
     vlay->addStretch();
@@ -353,6 +369,29 @@ void MainWindow::onResetDefaults() {
         QMessageBox::Yes | QMessageBox::Cancel);
     if (ans != QMessageBox::Yes) return;
     loadIntoUi(Sc2Config{});
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Axis wizard
+// ──────────────────────────────────────────────────────────────────────────────
+
+void MainWindow::onAxisWizard() {
+    // Save current UI state into cfg_ so the wizard can save/restore it.
+    cfg_ = collectFromUi();
+
+    AxisWizard wiz(cfg_, this);
+    if (wiz.exec() != QDialog::Accepted)
+        return;   // wizard cancelled — it already restored original config & service
+
+    // Apply detected mapping
+    cfg_ = wiz.detectedConfig();
+    cfg_.save();
+    loadIntoUi(cfg_);
+
+    // Restart service with new config and reconnect test tab.
+    onServiceRestart();
+    if (testTab_) testTab_->setPort(cfg_.port);
+    statusBar()->showMessage("Axis mapping updated from wizard — service restarting…", 4000);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
