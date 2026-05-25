@@ -31,11 +31,15 @@ public:
     QSize sizeHint() const override { return {360, 280}; }
     QSize minimumSizeHint() const override { return {200, 160}; }
 
+    // Simple 3-component float vector used for model-space geometry.
+    // Public so that file-scope static tables in controller_view.cpp can use
+    // ControllerView::V3 as their type without a friend declaration.
+    struct V3 { float x, y, z; };
+
 protected:
     void paintEvent(QPaintEvent*) override;
 
 private:
-    struct V3 { float x, y, z; };
 
     // Complementary filter state
     float   roll_  = 0.f;   // radians, around Z (face-toward-camera axis)
