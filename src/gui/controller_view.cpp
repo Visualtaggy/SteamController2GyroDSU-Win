@@ -8,85 +8,99 @@
 namespace sc2 {
 
 // ── Complementary filter tuning ───────────────────────────────────────────────
-static constexpr float ALPHA  = 0.96f;   // gyro weight per update
-static constexpr float MAX_DT = 0.05f;   // cap dt to avoid large jumps
+static constexpr float ALPHA  = 0.96f;
+static constexpr float MAX_DT = 0.05f;
 
-// ── SC2026 wireframe geometry (local model space) ─────────────────────────────
-// Controller rests in the XZ plane (X=right, Z=up on screen when upright).
-// Y axis points toward the user (out of the screen / controller face direction).
-// Scale: 1.0 ≈ half the controller width.
+// ── SC2026 body geometry ──────────────────────────────────────────────────────
 //
-// Body outline vertices (front face, Y=+0.08) — 20-point clockwise outline.
-// The SC2026 silhouette: wide arched top (large trackpad area), tapered waist,
-// then two grip prongs at the bottom.
+// The 2026 Steam Controller uses a conventional Xbox-like gamepad silhouette:
+// wide shoulder area at the top, slight waist taper, two grip prongs at the
+// bottom.  Haptic touchpads are small and square, located BELOW the thumbsticks
+// (not large circles at the top like the original SC).
+//
+// Model space: X = right, Y = toward camera (face), Z = up on screen.
+// Scale: 1.0 ≈ half the controller width.  Front face at Y = +0.10.
+//
+// 20-vertex outline, clockwise from top-left:
 static const ControllerView::V3 BODY[] = {
-    // ── Top arch ──
-    {-0.66f,  0.08f,  0.60f}, //  0  top-left shoulder
-    {-0.28f,  0.08f,  0.70f}, //  1  top center-left
-    { 0.28f,  0.08f,  0.70f}, //  2  top center-right
-    { 0.66f,  0.08f,  0.60f}, //  3  top-right shoulder
-    // ── Right side arc → waist ──
-    { 0.88f,  0.08f,  0.36f}, //  4  right upper arc
-    { 0.92f,  0.08f,  0.06f}, //  5  right side (widest)
-    { 0.82f,  0.08f, -0.14f}, //  6  right waist upper
-    { 0.64f,  0.08f, -0.28f}, //  7  right waist lower
-    // ── Right grip prong ──
-    { 0.62f,  0.08f, -0.68f}, //  8  right grip outer
-    { 0.46f,  0.08f, -0.88f}, //  9  right grip bottom-outer
-    { 0.26f,  0.08f, -0.94f}, // 10  right grip bottom
-    { 0.08f,  0.08f, -0.88f}, // 11  right grip inner
-    // ── Left grip prong (mirrored) ──
-    {-0.08f,  0.08f, -0.88f}, // 12  left grip inner
-    {-0.26f,  0.08f, -0.94f}, // 13  left grip bottom
-    {-0.46f,  0.08f, -0.88f}, // 14  left grip bottom-outer
-    {-0.62f,  0.08f, -0.68f}, // 15  left grip outer
-    // ── Left side arc ← waist ──
-    {-0.64f,  0.08f, -0.28f}, // 16  left waist lower
-    {-0.82f,  0.08f, -0.14f}, // 17  left waist upper
-    {-0.92f,  0.08f,  0.06f}, // 18  left side (widest)
-    {-0.88f,  0.08f,  0.36f}, // 19  left upper arc
+    {-0.70f,  0.10f,  0.52f}, //  0  top-left shoulder
+    {-0.34f,  0.10f,  0.60f}, //  1  top center-left
+    { 0.34f,  0.10f,  0.60f}, //  2  top center-right
+    { 0.70f,  0.10f,  0.52f}, //  3  top-right shoulder
+    { 0.88f,  0.10f,  0.30f}, //  4  right upper arc
+    { 0.92f,  0.10f,  0.02f}, //  5  right side (widest)
+    { 0.84f,  0.10f, -0.16f}, //  6  right waist
+    { 0.66f,  0.10f, -0.30f}, //  7  right waist lower
+    { 0.64f,  0.10f, -0.66f}, //  8  right grip outer
+    { 0.48f,  0.10f, -0.86f}, //  9  right grip bottom-outer
+    { 0.28f,  0.10f, -0.93f}, // 10  right grip bottom
+    { 0.10f,  0.10f, -0.86f}, // 11  right grip inner
+    {-0.10f,  0.10f, -0.86f}, // 12  left grip inner
+    {-0.28f,  0.10f, -0.93f}, // 13  left grip bottom
+    {-0.48f,  0.10f, -0.86f}, // 14  left grip bottom-outer
+    {-0.64f,  0.10f, -0.66f}, // 15  left grip outer
+    {-0.66f,  0.10f, -0.30f}, // 16  left waist lower
+    {-0.84f,  0.10f, -0.16f}, // 17  left waist
+    {-0.92f,  0.10f,  0.02f}, // 18  left side (widest)
+    {-0.88f,  0.10f,  0.30f}, // 19  left upper arc
 };
 static const int BODY_N = 20;
+static const float FRONT_Y =  0.10f;
+static const float BACK_Y  = -0.10f;
 
-// Back face at Y=-0.08, same XZ:
-static ControllerView::V3 backV(ControllerView::V3 v) {
-    return { v.x, -0.08f, v.z };
-}
+static ControllerView::V3 backV(ControllerView::V3 v) { return {v.x, BACK_Y, v.z}; }
 
-// ── SC2026 surface features ───────────────────────────────────────────────────
+// ── Bumper / shoulder button outlines ─────────────────────────────────────────
+// Thin band along the top of each shoulder (front face only).
+static const ControllerView::V3 LBUMP[4] = {
+    {-0.90f, FRONT_Y, 0.52f}, {-0.38f, FRONT_Y, 0.62f},
+    {-0.38f, FRONT_Y, 0.52f}, {-0.90f, FRONT_Y, 0.44f},
+};
+static const ControllerView::V3 RBUMP[4] = {
+    { 0.38f, FRONT_Y, 0.62f}, { 0.90f, FRONT_Y, 0.52f},
+    { 0.90f, FRONT_Y, 0.44f}, { 0.38f, FRONT_Y, 0.52f},
+};
 
-// Large circular trackpads (the signature SC2026 feature)
-static const ControllerView::V3 LP_CTR = {-0.36f,  0.08f,  0.24f}; // left pad
-static const ControllerView::V3 RP_CTR = { 0.36f,  0.08f,  0.24f}; // right pad
-static constexpr float PAD_R = 0.22f;
-static constexpr int   PAD_SEGS = 24;
+// ── Thumbsticks ───────────────────────────────────────────────────────────────
+static const ControllerView::V3 LS_CTR = {-0.34f, FRONT_Y,  0.06f};
+static const ControllerView::V3 RS_CTR = { 0.34f, FRONT_Y,  0.06f};
+static constexpr float STICK_R = 0.11f;
 
-// Thumbsticks (below and inner relative to trackpads)
-static const ControllerView::V3 LS_CTR = {-0.18f,  0.08f, -0.06f}; // left stick
-static const ControllerView::V3 RS_CTR = { 0.18f,  0.08f, -0.06f}; // right stick
-static constexpr float STICK_R = 0.08f;
+// ── D-pad (left upper area) ───────────────────────────────────────────────────
+static const ControllerView::V3 DPAD_CTR = {-0.58f, FRONT_Y, 0.32f};
+static constexpr float DPAD_ARM = 0.070f;
+static constexpr float DPAD_W   = 0.028f;
 
-// D-pad cross (left outer area)
-static const ControllerView::V3 DPAD_CTR = {-0.68f, 0.08f,  0.24f};
-static constexpr float DPAD_ARM = 0.07f;
-static constexpr float DPAD_W   = 0.03f;
+// ── ABXY face buttons (right upper area) ─────────────────────────────────────
+static const ControllerView::V3 BTN_CTR = { 0.58f, FRONT_Y, 0.32f};
+static constexpr float BTN_R   = 0.048f;
+static constexpr float BTN_OFF = 0.086f;
 
-// ABXY face button cluster (right outer area)
-static const ControllerView::V3 BTN_CTR = { 0.68f, 0.08f,  0.24f};
-static constexpr float BTN_R   = 0.045f;
-static constexpr float BTN_OFF = 0.078f;
+// ── Square haptic touchpads (below thumbsticks, angled slightly inward) ───────
+static const ControllerView::V3 LP_CTR = {-0.52f, FRONT_Y, -0.34f};
+static const ControllerView::V3 RP_CTR = { 0.52f, FRONT_Y, -0.34f};
+static constexpr float PAD_HW = 0.18f;   // half-width  (X)
+static constexpr float PAD_HH = 0.14f;   // half-height (Z)
 
-// Center buttons (Steam, quick-access, view)
-static const ControllerView::V3 STEAM_CTR = { 0.00f, 0.08f,  0.08f};
-static const ControllerView::V3 QAM_CTR   = { 0.13f, 0.08f,  0.08f};
-static const ControllerView::V3 VIEW_CTR  = {-0.13f, 0.08f,  0.08f};
+// ── Center cluster ────────────────────────────────────────────────────────────
+static const ControllerView::V3 STEAM_CTR = { 0.00f, FRONT_Y,  0.18f};
+static const ControllerView::V3 BACK_CTR  = {-0.18f, FRONT_Y,  0.06f};
+static const ControllerView::V3 MENU_CTR  = { 0.18f, FRONT_Y,  0.06f};
+static const ControllerView::V3 QAM_CTR   = { 0.00f, FRONT_Y,  0.06f};
 
-// ── ControllerView ────────────────────────────────────────────────────────────
+// ── Back grip buttons (2 per side, on back face) ─────────────────────────────
+static const ControllerView::V3 GRIP_BTNS[] = {
+    {-0.70f, BACK_Y, -0.42f}, {-0.70f, BACK_Y, -0.58f},   // left grip: L4, L5
+    { 0.70f, BACK_Y, -0.42f}, { 0.70f, BACK_Y, -0.58f},   // right grip: R4, R5
+};
+static constexpr float GRIP_BTN_R = 0.042f;
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 ControllerView::ControllerView(QWidget* parent) : QWidget(parent) {
     setMinimumSize(200, 160);
     QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(0x1a, 0x1a, 0x2e));
+    pal.setColor(QPalette::Window, QColor(0x12, 0x12, 0x20));
     setPalette(pal);
     setAutoFillBackground(true);
 }
@@ -98,43 +112,22 @@ void ControllerView::resetFilter() {
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 
-// Apply pitch → roll → yaw Euler rotation to a point in model space.
-//
-// Model axes: X = right,  Y = toward camera (face direction),  Z = up on screen.
-//
-//   pitch  — rotation around X (side axis):     positive = top tilts away from camera
-//   roll   — rotation around Y (face axis):     positive = right side tilts down
-//   yaw    — rotation around Z (vertical axis): positive = CCW from above
 ControllerView::V3 ControllerView::rotate(V3 v) const {
-    // 1. Pitch around X axis
+    // 1. Pitch around X
     float cp = cosf(pitch_), sp = sinf(pitch_);
-    float y1 =  cp * v.y - sp * v.z;
-    float z1 =  sp * v.y + cp * v.z;
-    float x1 =  v.x;
-
-    // 2. Roll around Y axis
+    float y1 =  cp * v.y - sp * v.z,  z1 =  sp * v.y + cp * v.z,  x1 = v.x;
+    // 2. Roll around Y
     float cr = cosf(roll_),  sr = sinf(roll_);
-    float x2 =  cr * x1 + sr * z1;
-    float z2 = -sr * x1 + cr * z1;
-    float y2 =  y1;
-
-    // 3. Yaw around Z axis
+    float x2 =  cr * x1 + sr * z1,  z2 = -sr * x1 + cr * z1,  y2 = y1;
+    // 3. Yaw around Z
     float cy = cosf(yaw_),   sy = sinf(yaw_);
-    float x3 =  cy * x2 - sy * y2;
-    float y3 =  sy * x2 + cy * y2;
-    float z3 =  z2;
-
-    return { x3, y3, z3 };
+    return { cy * x2 - sy * y2,  sy * x2 + cy * y2,  z2 };
 }
 
-// Perspective projection. Camera at (0, 3.5, 0) looking toward model origin.
-// Model Z is up on screen; model X is right.
 QPointF ControllerView::project(V3 v, float cx, float cy, float scale) const {
     const float camDist = 3.5f;
-    float w  = camDist - v.y;           // distance from camera
-    float sx = cx + scale * v.x / w;
-    float sy = cy - scale * v.z / w;   // Z up → screen up
-    return {sx, sy};
+    float w = camDist - v.y;
+    return { cx + scale * v.x / w,  cy - scale * v.z / w };
 }
 
 void ControllerView::drawLine(QPainter& p, V3 a, V3 b,
@@ -143,7 +136,6 @@ void ControllerView::drawLine(QPainter& p, V3 a, V3 b,
                project(rotate(b), cx, cy, scale));
 }
 
-// Draw a circle in the face (XZ) plane of the model as a projected polyline.
 void ControllerView::drawCircle(QPainter& p, V3 center, float r, V3 /*normal*/,
                                 float cx, float cy, float scale, int segs) const {
     QPolygonF poly;
@@ -157,166 +149,246 @@ void ControllerView::drawCircle(QPainter& p, V3 center, float r, V3 /*normal*/,
     p.drawPolyline(poly);
 }
 
+// Square haptic pad: outline + small inner cross to indicate it's a touchpad.
+void ControllerView::drawSquarePad(QPainter& p, V3 ctr, float hw, float hh,
+                                    float cx, float cy, float scale) const {
+    V3 corners[4] = {
+        {ctr.x - hw, ctr.y, ctr.z + hh},
+        {ctr.x + hw, ctr.y, ctr.z + hh},
+        {ctr.x + hw, ctr.y, ctr.z - hh},
+        {ctr.x - hw, ctr.y, ctr.z - hh},
+    };
+    QPolygonF poly;
+    for (auto& c : corners) poly << project(rotate(c), cx, cy, scale);
+    poly << poly[0];
+    p.drawPolyline(poly);
+
+    // Inner cross
+    drawLine(p, {ctr.x - hw * 0.35f, ctr.y, ctr.z},
+                {ctr.x + hw * 0.35f, ctr.y, ctr.z}, cx, cy, scale);
+    drawLine(p, {ctr.x, ctr.y, ctr.z - hh * 0.35f},
+                {ctr.x, ctr.y, ctr.z + hh * 0.35f}, cx, cy, scale);
+}
+
+// D-pad cross as a proper plus-sign outline.
+void ControllerView::drawDpad(QPainter& p, V3 ctr, float arm, float w,
+                               float cx, float cy, float scale) const {
+    float x = ctr.x, y = ctr.y, z = ctr.z;
+    // Horizontal arm
+    drawLine(p, {x-arm, y, z-w}, {x-arm, y, z+w}, cx, cy, scale);
+    drawLine(p, {x+arm, y, z-w}, {x+arm, y, z+w}, cx, cy, scale);
+    drawLine(p, {x-arm, y, z+w}, {x-w,   y, z+w}, cx, cy, scale);
+    drawLine(p, {x+arm, y, z+w}, {x+w,   y, z+w}, cx, cy, scale);
+    drawLine(p, {x-arm, y, z-w}, {x-w,   y, z-w}, cx, cy, scale);
+    drawLine(p, {x+arm, y, z-w}, {x+w,   y, z-w}, cx, cy, scale);
+    // Vertical arm
+    drawLine(p, {x-w, y, z-arm}, {x-w, y, z-w}, cx, cy, scale);
+    drawLine(p, {x+w, y, z-arm}, {x+w, y, z-w}, cx, cy, scale);
+    drawLine(p, {x-w, y, z+arm}, {x-w, y, z+w}, cx, cy, scale);
+    drawLine(p, {x+w, y, z+arm}, {x+w, y, z+w}, cx, cy, scale);
+    drawLine(p, {x-w, y, z-arm}, {x+w, y, z-arm}, cx, cy, scale);
+    drawLine(p, {x-w, y, z+arm}, {x+w, y, z+arm}, cx, cy, scale);
+}
+
+// Build a QPainterPath for the front or back body outline (projected).
+void ControllerView::buildBodyPath(QPainterPath& path, float cx, float cy,
+                                    float scale, bool front) const {
+    path = QPainterPath();
+    for (int i = 0; i < BODY_N; ++i) {
+        V3 v = front ? BODY[i] : backV(BODY[i]);
+        QPointF pt = project(rotate(v), cx, cy, scale);
+        if (i == 0) path.moveTo(pt);
+        else         path.lineTo(pt);
+    }
+    path.closeSubpath();
+}
+
 // ── Paint ─────────────────────────────────────────────────────────────────────
 
 void ControllerView::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    const float cx    = width()  * 0.5f;
-    const float cy    = height() * 0.52f;   // slight vertical offset
+    const float cx    = width()  * 0.50f;
+    const float cy    = height() * 0.52f;
     const float scale = std::min(width(), height()) * 0.40f;
 
-    // ── Face visibility from face normal ──────────────────────────────────────
-    V3 faceNorm = rotate({0.f, 1.f, 0.f});  // model +Y = face direction
-    bool facingUser = (faceNorm.y > 0.f);
+    // Face normal — determines which face is toward the camera.
+    V3 faceNorm  = rotate({0.f, 1.f, 0.f});
+    bool faceFwd = (faceNorm.y > 0.f);
 
-    QColor colFront(0x00, 0xff, 0x88);   // bright green — front face
-    QColor colBack (0x00, 0x88, 0x44);   // darker green — back face
-    QColor colEdge (0x00, 0xcc, 0x66);   // medium — connecting edges
+    // ── Colour palette ────────────────────────────────────────────────────────
+    QColor cFront(0x00, 0xe8, 0x80);     // bright green — front face outline
+    QColor cBack (0x00, 0x72, 0x40);     // dim green    — back face outline
+    QColor cEdge (0x00, 0xaa, 0x58);     // medium       — connecting edges
+    QColor cFill (0x1c, 0x1c, 0x30);     // body fill (front)
+    QColor cFillB(0x14, 0x14, 0x22);     // body fill (back)
+    QColor cFeat (faceFwd ? cFront : cBack); // feature colour matches visible face
 
-    // ── Back face ─────────────────────────────────────────────────────────────
+    // ── 1. Back face (filled + outline) ──────────────────────────────────────
     {
-        QPen pen(facingUser ? colBack : colFront, 1.2f);
+        QPainterPath backPath;
+        buildBodyPath(backPath, cx, cy, scale, false);
+        p.fillPath(backPath, faceFwd ? cFillB : cFill);
+        QPen pen(faceFwd ? cBack : cFront, 1.2f);
         p.setPen(pen);
-        for (int i = 0; i < BODY_N; ++i)
-            drawLine(p, backV(BODY[i]), backV(BODY[(i + 1) % BODY_N]), cx, cy, scale);
+        p.drawPath(backPath);
+
+        // Back grip buttons (only visible when back faces camera)
+        if (!faceFwd) {
+            QPen gbPen(cFront, 1.2f);
+            p.setPen(gbPen);
+            for (const auto& gb : GRIP_BTNS)
+                drawCircle(p, gb, GRIP_BTN_R, {0,1,0}, cx, cy, scale, 8);
+        }
     }
 
-    // ── Connecting edges (front ↔ back) ───────────────────────────────────────
+    // ── 2. Connecting edges (front ↔ back) ────────────────────────────────────
     {
-        QPen pen(colEdge, 1.0f);
+        QPen pen(cEdge, 1.0f);
         p.setPen(pen);
-        // Sparse selection — shoulders, waist notch, grip corners
-        const int edges[] = {0, 3, 4, 5, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19};
+        const int edges[] = {0,3,4,5,7,8,10,11,12,13,15,16,17,18,19};
         for (int i : edges)
             drawLine(p, BODY[i], backV(BODY[i]), cx, cy, scale);
     }
 
-    // ── Front face ────────────────────────────────────────────────────────────
+    // ── 3. Front face (filled + outline) ──────────────────────────────────────
     {
-        QPen pen(facingUser ? colFront : colBack, 1.8f);
+        QPainterPath frontPath;
+        buildBodyPath(frontPath, cx, cy, scale, true);
+        p.fillPath(frontPath, faceFwd ? cFill : cFillB);
+        QPen pen(faceFwd ? cFront : cBack, 1.8f);
         p.setPen(pen);
-        for (int i = 0; i < BODY_N; ++i)
-            drawLine(p, BODY[i], BODY[(i + 1) % BODY_N], cx, cy, scale);
+        p.drawPath(frontPath);
     }
 
-    // ── Front-face features ───────────────────────────────────────────────────
+    // ── 4. Front-face features ────────────────────────────────────────────────
     {
-        float alpha = facingUser ? 0.9f : 0.4f;
-        QColor featCol(colFront);
-        featCol.setAlphaF(alpha);
-        QPen pen(featCol, 1.5f);
-        p.setPen(pen);
+        float alpha = faceFwd ? 0.95f : 0.35f;
+        cFeat.setAlphaF(alpha);
 
-        // Large circular trackpads (the SC2026 signature feature)
-        drawCircle(p, LP_CTR, PAD_R, {0,1,0}, cx, cy, scale, PAD_SEGS);
-        drawCircle(p, RP_CTR, PAD_R, {0,1,0}, cx, cy, scale, PAD_SEGS);
+        // Shoulder / bumper outlines
+        {
+            QPen pen(cFeat, 1.3f);
+            p.setPen(pen);
+            // Left bumper
+            QPolygonF lb;
+            for (const auto& v : LBUMP) lb << project(rotate(v), cx, cy, scale);
+            lb << lb[0];
+            p.drawPolyline(lb);
+            // Right bumper
+            QPolygonF rb;
+            for (const auto& v : RBUMP) rb << project(rotate(v), cx, cy, scale);
+            rb << rb[0];
+            p.drawPolyline(rb);
+        }
 
         // Thumbsticks
-        pen.setWidthF(1.3f);
-        p.setPen(pen);
-        drawCircle(p, LS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 12);
-        drawCircle(p, RS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 12);
-
-        // D-pad cross
         {
-            float a = DPAD_ARM, w = DPAD_W;
-            auto dc = DPAD_CTR;
-            // Vertical arm
-            drawLine(p, {dc.x - w, dc.y, dc.z - a}, {dc.x - w, dc.y, dc.z + a}, cx, cy, scale);
-            drawLine(p, {dc.x + w, dc.y, dc.z - a}, {dc.x + w, dc.y, dc.z + a}, cx, cy, scale);
-            drawLine(p, {dc.x - w, dc.y, dc.z + a}, {dc.x + w, dc.y, dc.z + a}, cx, cy, scale);
-            drawLine(p, {dc.x - w, dc.y, dc.z - a}, {dc.x + w, dc.y, dc.z - a}, cx, cy, scale);
-            // Horizontal arm
-            drawLine(p, {dc.x - a, dc.y, dc.z - w}, {dc.x + a, dc.y, dc.z - w}, cx, cy, scale);
-            drawLine(p, {dc.x - a, dc.y, dc.z + w}, {dc.x + a, dc.y, dc.z + w}, cx, cy, scale);
-            drawLine(p, {dc.x - a, dc.y, dc.z - w}, {dc.x - a, dc.y, dc.z + w}, cx, cy, scale);
-            drawLine(p, {dc.x + a, dc.y, dc.z - w}, {dc.x + a, dc.y, dc.z + w}, cx, cy, scale);
+            QPen pen(cFeat, 1.4f);
+            p.setPen(pen);
+            drawCircle(p, LS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 16);
+            drawCircle(p, RS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 16);
         }
 
-        // ABXY button cluster (4 circles)
-        static const float bx[] = { BTN_OFF, -BTN_OFF,  0.f,      0.f     };
-        static const float bz[] = { 0.f,      0.f,      BTN_OFF, -BTN_OFF };
-        for (int i = 0; i < 4; ++i) {
-            V3 bc = { BTN_CTR.x + bx[i], BTN_CTR.y, BTN_CTR.z + bz[i] };
-            drawCircle(p, bc, BTN_R, {0,1,0}, cx, cy, scale, 8);
+        // D-pad
+        {
+            QPen pen(cFeat, 1.2f);
+            p.setPen(pen);
+            drawDpad(p, DPAD_CTR, DPAD_ARM, DPAD_W, cx, cy, scale);
         }
 
-        // Center buttons: Steam (larger), quick-access, view
-        drawCircle(p, STEAM_CTR, 0.040f, {0,1,0}, cx, cy, scale, 10);
-        drawCircle(p, QAM_CTR,   0.028f, {0,1,0}, cx, cy, scale, 8);
-        drawCircle(p, VIEW_CTR,  0.028f, {0,1,0}, cx, cy, scale, 8);
+        // ABXY buttons (4 circles in a diamond)
+        {
+            QPen pen(cFeat, 1.2f);
+            p.setPen(pen);
+            static const float bx[] = { BTN_OFF, -BTN_OFF,  0.f,      0.f     };
+            static const float bz[] = { 0.f,      0.f,      BTN_OFF, -BTN_OFF };
+            for (int i = 0; i < 4; ++i) {
+                V3 bc = { BTN_CTR.x + bx[i], BTN_CTR.y, BTN_CTR.z + bz[i] };
+                drawCircle(p, bc, BTN_R, {0,1,0}, cx, cy, scale, 8);
+            }
+        }
+
+        // Square haptic touchpads
+        {
+            QPen pen(cFeat, 1.4f);
+            p.setPen(pen);
+            drawSquarePad(p, LP_CTR, PAD_HW, PAD_HH, cx, cy, scale);
+            drawSquarePad(p, RP_CTR, PAD_HW, PAD_HH, cx, cy, scale);
+        }
+
+        // Center cluster: Steam (larger), Back, Menu, QAM
+        {
+            QPen pen(cFeat, 1.1f);
+            p.setPen(pen);
+            drawCircle(p, STEAM_CTR, 0.044f, {0,1,0}, cx, cy, scale, 12);
+            drawCircle(p, BACK_CTR,  0.026f, {0,1,0}, cx, cy, scale, 8);
+            drawCircle(p, MENU_CTR,  0.026f, {0,1,0}, cx, cy, scale, 8);
+            drawCircle(p, QAM_CTR,   0.026f, {0,1,0}, cx, cy, scale, 8);
+        }
+
+        // Back grip buttons shown as small dots on the grip edges (front view hint)
+        if (faceFwd) {
+            QPen pen(cFeat, 1.0f);
+            pen.setStyle(Qt::DotLine);
+            p.setPen(pen);
+            // Hint positions on front face near grip inner edges
+            static const V3 hintPos[] = {
+                {-0.12f, FRONT_Y, -0.50f}, {-0.12f, FRONT_Y, -0.64f},
+                { 0.12f, FRONT_Y, -0.50f}, { 0.12f, FRONT_Y, -0.64f},
+            };
+            pen.setStyle(Qt::SolidLine);
+            p.setPen(pen);
+            for (const auto& h : hintPos)
+                drawCircle(p, h, 0.030f, {0,1,0}, cx, cy, scale, 6);
+        }
     }
 
-    // ── 3-axis orientation indicator ──────────────────────────────────────────
-    // Draws in the top-right corner:
-    //   • Horizon chord (blue)  — chord inside the circle, rotated by roll and
-    //     shifted vertically by pitch.  Shows roll + pitch.
-    //   • Yaw arc (orange) — arc around the outer ring, filling from 12 o'clock
-    //     CW or CCW to show accumulated yaw angle.
+    // ── 5. Orientation indicator (top-right corner) ───────────────────────────
     {
-        const int hx = width()  - 56;  // indicator center X
-        const int hy = 46;              // indicator center Y
-        const int hr = 34;              // inner circle radius (horizon lives here)
-        const int yr = hr + 5;          // yaw arc radius (just outside the circle)
+        const int hx = width()  - 56;
+        const int hy = 46;
+        const int hr = 34;
+        const int yr = hr + 5;
 
         p.save();
         p.translate(hx, hy);
 
-        // 1. Yaw arc — drawn first so border circle overlaps it cleanly
+        // Yaw arc (orange, outer ring)
         float yawDeg = yaw_ * 180.f / float(M_PI);
-        // Wrap to (−180, +180]
         while (yawDeg >  180.f) yawDeg -= 360.f;
         while (yawDeg < -180.f) yawDeg += 360.f;
-
         if (fabsf(yawDeg) > 1.5f) {
             QPen yawPen(QColor(0xff, 0x88, 0x00), 3.0f,
                         Qt::SolidLine, Qt::RoundCap);
             p.setPen(yawPen);
-            // Qt drawArc: 0° = 3 o'clock, increases CCW; angles in 1/16 degrees.
-            // 12 o'clock = 90°.
-            // Positive yaw = CCW from above = CCW arc on screen = positive spanAngle.
-            int startAngle16 = 90 * 16;
-            int spanAngle16  = int(yawDeg * 16.f);
-            p.drawArc(-yr, -yr, yr * 2, yr * 2, startAngle16, spanAngle16);
+            p.drawArc(-yr, -yr, yr * 2, yr * 2,
+                      90 * 16, int(yawDeg * 16.f));
         }
 
-        // 2. Border circle
-        QPen borPen(QColor(0x44, 0x44, 0x66), 1.2f);
-        p.setPen(borPen);
+        // Border circle
+        p.setPen(QPen(QColor(0x44, 0x44, 0x66), 1.2f));
         p.drawEllipse(-hr, -hr, hr * 2, hr * 2);
 
-        // 3. Horizon chord
-        //    The chord is inside the circle: at vertical offset pitchPx (in rotated
-        //    coordinates), rotated by rollDeg.
-        float rollDeg  = roll_  * 180.f / float(M_PI);
-        // Map pitch: ±90° → ±hr pixels (full range fills the circle)
-        float pitchPx  = std::clamp(pitch_ / (float(M_PI) / 2.f) * float(hr),
-                                    -float(hr), float(hr));
-
+        // Horizon chord (roll + pitch)
+        float rollDeg = roll_  * 180.f / float(M_PI);
+        float pitchPx = std::clamp(pitch_ / (float(M_PI) / 2.f) * float(hr),
+                                   -float(hr), float(hr));
         p.save();
-        p.rotate(rollDeg);  // coordinate system rotates with roll
-
-        // Chord endpoints at height pitchPx within circle of radius hr
-        float h2       = float(hr) * float(hr) - pitchPx * pitchPx;
-        float chordHalf = (h2 > 0.f) ? sqrtf(h2) : 0.f;
-
-        if (chordHalf > 1.f) {
-            // Filled-chord look: draw three parallel lines for thickness variation
-            QPen horizPen(QColor(0x44, 0x88, 0xff), 2.2f);
-            p.setPen(horizPen);
-            p.drawLine(QPointF(-chordHalf, pitchPx), QPointF(chordHalf, pitchPx));
-
-            // Small pitch-indicator tick (perpendicular nub at each end)
-            p.drawLine(QPointF(-chordHalf, pitchPx - 4), QPointF(-chordHalf, pitchPx + 4));
-            p.drawLine(QPointF( chordHalf, pitchPx - 4), QPointF( chordHalf, pitchPx + 4));
+        p.rotate(rollDeg);
+        float h2 = float(hr)*float(hr) - pitchPx*pitchPx;
+        float half = (h2 > 0.f) ? sqrtf(h2) : 0.f;
+        if (half > 1.f) {
+            p.setPen(QPen(QColor(0x44, 0x88, 0xff), 2.2f));
+            p.drawLine(QPointF(-half, pitchPx), QPointF(half, pitchPx));
+            p.drawLine(QPointF(-half, pitchPx-4), QPointF(-half, pitchPx+4));
+            p.drawLine(QPointF( half, pitchPx-4), QPointF( half, pitchPx+4));
         }
         p.restore();
 
-        // 4. Reference crosshair (fixed, shows horizon datum)
-        QPen refPen(QColor(0xff, 0xff, 0xff, 140), 1.0f);
-        p.setPen(refPen);
+        // Reference crosshair
+        p.setPen(QPen(QColor(0xff, 0xff, 0xff, 140), 1.0f));
         p.drawLine(-6, 0, 6, 0);
         p.drawLine( 0, -6, 0, 6);
 
@@ -333,19 +405,8 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
     float dt = float(elapsed_us) / 1e6f;
     if (dt <= 0.f || dt > MAX_DT) dt = 0.008f;
 
-    // DSU-space:
-    //   accel_x positive → AccelRightToLeft   (right side down)
-    //   accel_y positive → AccelFrontToBack   (face down)
-    //   accel_z positive → AccelTopToBottom   (flat face-up gives +1g on accel_z)
-    //
-    // Gravity vector from accelerometer:
-    //   roll_acc  = atan2(ax, az)   → tilt left/right (right side down = positive roll)
-    //   pitch_acc = atan2(-ay, az)  → tilt nose up/down (face tilts down = positive pitch)
-
     float norm = sqrtf(accel[0]*accel[0] + accel[1]*accel[1] + accel[2]*accel[2]);
     if (norm < 0.3f || norm > 3.0f) {
-        // High motion or sensor dropout — integrate gyro only
-        // (Use same axis assignments as the filter branch below)
         float pitch_rate = gyro[0] * float(M_PI) / 180.f;
         float roll_rate  = gyro[2] * float(M_PI) / 180.f;
         float yaw_rate   = -gyro[1] * float(M_PI) / 180.f;
@@ -363,10 +424,7 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
     float roll_acc  = atan2f( ax,  az);
     float pitch_acc = atan2f(-ay,  az);
 
-    // DSU gyro axis → physical rotation mapping (from DEFAULT_GYRO src assignments):
-    //   gyro[0] = raw[0] (side axis)        → rotation around X → pitch rate
-    //   gyro[1] = -raw[2] (top-bottom axis) → rotation around Z → −yaw rate (inv_y=true)
-    //   gyro[2] = raw[1] (face-depth axis)  → rotation around Y → roll rate
+    // DSU convention: gyro[0]=pitch, gyro[1]=yaw (inv), gyro[2]=roll
     float pitch_rate = gyro[0] * float(M_PI) / 180.f;
     float roll_rate  = gyro[2] * float(M_PI) / 180.f;
     float yaw_rate   = -gyro[1] * float(M_PI) / 180.f;

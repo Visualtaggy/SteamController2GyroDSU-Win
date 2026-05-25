@@ -57,6 +57,12 @@ private:
     void drawLine(class QPainter& p, V3 a, V3 b, float cx, float cy, float scale) const;
     void drawCircle(class QPainter& p, V3 center, float r, V3 normalAxis,
                     float cx, float cy, float scale, int segs = 12) const;
+    void drawSquarePad(class QPainter& p, V3 center, float hw, float hh,
+                       float cx, float cy, float scale) const;
+    void drawDpad(class QPainter& p, V3 center, float arm, float w,
+                  float cx, float cy, float scale) const;
+    void buildBodyPath(class QPainterPath& path, float cx, float cy, float scale,
+                       bool front) const;
 };
 
 } // namespace sc2
