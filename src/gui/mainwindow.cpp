@@ -88,13 +88,13 @@ void MainWindow::setupUi() {
     root->addWidget(svcFrame);
 
     // ── tabs ──
-    auto* tabs = new QTabWidget;
-    tabs->addTab(buildServerTab(), "Server Settings");
-    tabs->addTab(buildAxisTab(),   "Axis Mapping");
-    tabs->addTab(buildCalibTab(),  "Calibration");
+    tabs_ = new QTabWidget;
+    tabs_->addTab(buildServerTab(), "Server Settings");
+    tabs_->addTab(buildAxisTab(),   "Axis Mapping");
+    tabs_->addTab(buildCalibTab(),  "Calibration");
     testTab_ = new TestTab(cfg_.port);
-    tabs->addTab(testTab_, "Test / Verify");
-    root->addWidget(tabs, 1);
+    tabs_->addTab(testTab_, "Test / Verify");
+    root->addWidget(tabs_, 1);
 
     // ── bottom buttons ──
     auto* btnRow = new QHBoxLayout;
@@ -388,10 +388,24 @@ void MainWindow::onAxisWizard() {
     cfg_.save();
     loadIntoUi(cfg_);
 
-    // Restart service with new config and reconnect test tab.
-    onServiceRestart();
     if (testTab_) testTab_->setPort(cfg_.port);
-    statusBar()->showMessage("Axis mapping updated from wizard — service restarting…", 4000);
+
+    // Offer to calibrate immediately — axis remapping invalidates old bias values.
+    auto ans = QMessageBox::question(this, "Calibrate gyro?",
+        "Axis mapping updated.\n\n"
+        "The previous gyro bias calibration was measured for the old axis mapping "
+        "and should be re-done to fix drift.\n\n"
+        "Run calibration now? (Place the controller flat and still first.)",
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (ans == QMessageBox::Yes) {
+        tabs_->setCurrentIndex(2);   // switch to Calibration tab
+        onStartCalibration();        // calibration restarts the service when done
+        statusBar()->showMessage("Calibrating gyro with new axis mapping…", 5000);
+    } else {
+        onServiceRestart();
+        statusBar()->showMessage("Axis mapping updated from wizard — service restarting…", 4000);
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

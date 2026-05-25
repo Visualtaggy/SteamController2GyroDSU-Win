@@ -142,12 +142,12 @@ void AxisWizard::goToStage(Stage s) {
         instrLbl_->setText(
             "<b style='font-size:12pt'>① Place the controller flat, face up</b><br><br>"
             "Set it on a table or flat surface. Do <b>not</b> touch or tilt it.<br>"
-            "Hold still for 3 seconds while data is collected.");
+            "Hold still for <b>5 seconds</b> while data is collected.");
         nextBtn_->setEnabled(false);
         progBar_->setVisible(true);
         progBar_->setValue(0);
         elapsedMs_ = 0;
-        collectMs_ = 3000;
+        collectMs_ = 5000;
         flatSamples_.clear();
         activeSamples_ = &flatSamples_;
         collectTimer_->start();
@@ -158,12 +158,12 @@ void AxisWizard::goToStage(Stage s) {
         instrLbl_->setText(
             "<b style='font-size:12pt'>② Tilt the RIGHT SIDE down</b><br><br>"
             "Pick up the controller and tilt the right side down "
-            "by about <b>30–45°</b>. Hold that angle still for 3 seconds.");
+            "by about <b>30–45°</b>. Hold that angle still for <b>5 seconds</b>.");
         nextBtn_->setEnabled(false);
         progBar_->setVisible(true);
         progBar_->setValue(0);
         elapsedMs_ = 0;
-        collectMs_ = 3000;
+        collectMs_ = 5000;
         tiltRightSamples_.clear();
         activeSamples_ = &tiltRightSamples_;
         collectTimer_->start();
@@ -174,12 +174,12 @@ void AxisWizard::goToStage(Stage s) {
         instrLbl_->setText(
             "<b style='font-size:12pt'>③ Tilt the TOP EDGE away from you</b><br><br>"
             "Lay it flat again, then tilt the top edge (shoulder buttons) "
-            "<b>away</b> from you by about 30–45°. Hold still for 3 seconds.");
+            "<b>away</b> from you by about 30–45°. Hold still for <b>5 seconds</b>.");
         nextBtn_->setEnabled(false);
         progBar_->setVisible(true);
         progBar_->setValue(0);
         elapsedMs_ = 0;
-        collectMs_ = 3000;
+        collectMs_ = 5000;
         tiltTopSamples_.clear();
         activeSamples_ = &tiltTopSamples_;
         collectTimer_->start();
@@ -190,13 +190,13 @@ void AxisWizard::goToStage(Stage s) {
         instrLbl_->setText(
             "<b style='font-size:12pt'>④ Spin it clockwise on the table</b><br><br>"
             "Lay it flat and spin the controller <b>clockwise</b> "
-            "(viewed from above) — keep spinning for 3 seconds.<br>"
+            "(viewed from above) — keep spinning for <b>5 seconds</b>.<br>"
             "This detects the yaw direction.");
         nextBtn_->setEnabled(false);
         progBar_->setVisible(true);
         progBar_->setValue(0);
         elapsedMs_ = 0;
-        collectMs_ = 3000;
+        collectMs_ = 5000;
         spinSamples_.clear();
         activeSamples_ = &spinSamples_;
         collectTimer_->start();

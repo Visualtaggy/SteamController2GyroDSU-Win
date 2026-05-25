@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QProgressBar>
 #include <QGroupBox>
+#include <QTabWidget>
 #include <QTimer>
 #include <QThread>
 #include "config.h"
@@ -73,8 +74,9 @@ private:
     // ── service refresh ──
     QTimer* svcTimer_ = nullptr;
 
-    // ── test tab ──
-    TestTab* testTab_ = nullptr;
+    // ── tabs ──
+    QTabWidget* tabs_    = nullptr;
+    TestTab*    testTab_ = nullptr;
 
     // ── calibration worker ──
     QThread* calibThread_ = nullptr;
