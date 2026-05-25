@@ -372,9 +372,11 @@ bool AxisWizard::buildMapping() {
     result_.accel = {rollAxis,  rollAccelInv,
                      pitchAxis, pitchAccelInv,
                      gravAxis,  gravInv};
-    result_.gyro  = {rollAxis,  rollGyroInv,
-                     pitchAxis, pitchGyroInv,
-                     yawAxis,   yawInv};
+    // DSU/controller_view convention: gyro[0]=pitch, gyro[1]=yaw, gyro[2]=roll.
+    // (Matches DEFAULT_GYRO: src_x=pitch_axis, src_y=yaw_axis, src_z=roll_axis.)
+    result_.gyro  = {pitchAxis, pitchGyroInv,
+                     yawAxis,   yawInv,
+                     rollAxis,  rollGyroInv};
 
     const char* ax[3] = {"0", "1", "2"};
     resultSummary_ = QString(
@@ -382,19 +384,19 @@ bool AxisWizard::buildMapping() {
         "<tr><th align='left'>Output</th>"
         "    <th align='left'>Raw axis</th>"
         "    <th align='left'>Invert</th></tr>"
-        "<tr><td>Accel X (roll)</td>      <td>%1</td><td>%2</td></tr>"
-        "<tr><td>Accel Y (pitch)</td>     <td>%3</td><td>%4</td></tr>"
-        "<tr><td>Accel Z (gravity)</td>   <td>%5</td><td>%6</td></tr>"
-        "<tr><td>Gyro X (roll rate)</td>  <td>%7</td><td>%8</td></tr>"
-        "<tr><td>Gyro Y (pitch rate)</td> <td>%9</td><td>%10</td></tr>"
-        "<tr><td>Gyro Z (yaw rate)</td>   <td>%11</td><td>%12</td></tr>"
+        "<tr><td>Accel X (roll)</td>       <td>%1</td><td>%2</td></tr>"
+        "<tr><td>Accel Y (pitch)</td>      <td>%3</td><td>%4</td></tr>"
+        "<tr><td>Accel Z (gravity)</td>    <td>%5</td><td>%6</td></tr>"
+        "<tr><td>Gyro X (pitch rate)</td>  <td>%7</td><td>%8</td></tr>"
+        "<tr><td>Gyro Y (yaw rate)</td>    <td>%9</td><td>%10</td></tr>"
+        "<tr><td>Gyro Z (roll rate)</td>   <td>%11</td><td>%12</td></tr>"
         "</table>")
-        .arg(ax[rollAxis]).arg(rollAccelInv  ? "yes" : "no")
+        .arg(ax[rollAxis]).arg(rollAccelInv   ? "yes" : "no")
         .arg(ax[pitchAxis]).arg(pitchAccelInv ? "yes" : "no")
         .arg(ax[gravAxis]).arg(gravInv        ? "yes" : "no")
-        .arg(ax[rollAxis]).arg(rollGyroInv    ? "yes" : "no")
         .arg(ax[pitchAxis]).arg(pitchGyroInv  ? "yes" : "no")
-        .arg(ax[yawAxis]).arg(yawInv          ? "yes" : "no");
+        .arg(ax[yawAxis]).arg(yawInv          ? "yes" : "no")
+        .arg(ax[rollAxis]).arg(rollGyroInv    ? "yes" : "no");
 
     return true;
 }
