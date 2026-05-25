@@ -2,16 +2,22 @@
 cd "$(dirname "$(readlink -f "$0")")"
 
 echo "Stopping service if running..."
-systemctl --user -q stop SteamControllerGyroDSU.service 2>/dev/null
+systemctl --user -q stop  SteamControllerGyroDSU.service 2>/dev/null
 systemctl --user -q disable SteamControllerGyroDSU.service 2>/dev/null
 
-echo "Installing binary..."
+echo "Installing binaries..."
 mkdir -p "$HOME/SteamControllerGyroDSU"
-cp SteamControllerGyroDSU "$HOME/SteamControllerGyroDSU/"
+cp SteamControllerGyroDSU       "$HOME/SteamControllerGyroDSU/"
 chmod +x "$HOME/SteamControllerGyroDSU/SteamControllerGyroDSU"
 
+# Install the GUI config tool if it was included in this release.
+if [ -f sc2gyrodsu-config ]; then
+    cp sc2gyrodsu-config "$HOME/SteamControllerGyroDSU/"
+    chmod +x "$HOME/SteamControllerGyroDSU/sc2gyrodsu-config"
+fi
+
 echo "Installing scripts..."
-cp update.sh "$HOME/SteamControllerGyroDSU/"
+cp update.sh   "$HOME/SteamControllerGyroDSU/"
 cp uninstall.sh "$HOME/SteamControllerGyroDSU/"
 chmod +x "$HOME/SteamControllerGyroDSU/update.sh"
 chmod +x "$HOME/SteamControllerGyroDSU/uninstall.sh"
@@ -37,6 +43,7 @@ EOF
 systemctl --user enable --now SteamControllerGyroDSU.service
 
 echo "Installing desktop shortcuts..."
+
 cat > "$HOME/Desktop/Update SteamControllerGyroDSU.desktop" << EOF
 [Desktop Entry]
 Name=Update SteamControllerGyroDSU
@@ -57,8 +64,22 @@ Type=Application
 EOF
 chmod +x "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop"
 
+# Desktop shortcut for the GUI config tool (only if binary is present).
+if [ -f "$HOME/SteamControllerGyroDSU/sc2gyrodsu-config" ]; then
+    cat > "$HOME/Desktop/SteamControllerGyroDSU Config.desktop" << EOF
+[Desktop Entry]
+Name=SteamControllerGyroDSU Config
+Exec=$HOME/SteamControllerGyroDSU/sc2gyrodsu-config
+Icon=input-gamepad
+Terminal=false
+Type=Application
+EOF
+    chmod +x "$HOME/Desktop/SteamControllerGyroDSU Config.desktop"
+fi
+
 echo ""
 echo "Done! SteamControllerGyroDSU is running on port 26761."
 echo "Point your emulator at 127.0.0.1:26761"
+echo ""
 read -n 1 -s -r -p "Press any key to exit."
 echo ""

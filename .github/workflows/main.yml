@@ -4,37 +4,58 @@ on:
     branches: [main]
   release:
     types: [created]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ pkg-config libhidapi-dev zip
+          sudo apt-get install -y \
+            cmake g++ pkg-config \
+            libhidapi-dev \
+            qt6-base-dev libgl1-mesa-dev \
+            zip
+
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel
+
       - name: Package
         run: |
           mkdir -p SteamControllerGyroDSUSetup
+
+          # Daemon (required)
           cp build/sc2gyrodsu SteamControllerGyroDSUSetup/SteamControllerGyroDSU
-          cp install.sh SteamControllerGyroDSUSetup/
-          cp sc2gyrodsu.service SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
-          cp update.sh SteamControllerGyroDSUSetup/
-          cp uninstall.sh SteamControllerGyroDSUSetup/
-          cp SteamControllerGyroDSU.desktop SteamControllerGyroDSUSetup/
-          cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
+
+          # GUI config tool (included only if Qt6 was found and it was built)
+          if [ -f build/sc2gyrodsu-config ]; then
+            cp build/sc2gyrodsu-config SteamControllerGyroDSUSetup/sc2gyrodsu-config
+          fi
+
+          cp install.sh              SteamControllerGyroDSUSetup/
+          cp sc2gyrodsu.service      SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
+          cp update.sh               SteamControllerGyroDSUSetup/
+          cp uninstall.sh            SteamControllerGyroDSUSetup/
+          cp SteamControllerGyroDSU.desktop             SteamControllerGyroDSUSetup/
+          cp uninstall-steamcontrollergyrodsu.desktop   SteamControllerGyroDSUSetup/
+
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SteamControllerGyroDSU
           path: SteamControllerGyroDSUSetup.zip
+
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: SteamControllerGyroDSUSetup.zip
+          files: |
+            SteamControllerGyroDSUSetup.zip
+            SteamControllerGyroDSU.desktop
