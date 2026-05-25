@@ -79,30 +79,31 @@ void ControllerView::resetFilter() {
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 
-// Apply roll→pitch→yaw Euler rotation to a point in model space.
-// DSU-space mapping to visualization:
-//   The complementary filter computes:
-//     roll  = rotation around model Y axis (tilts left/right)
-//     pitch = rotation around model X axis (tilts forward/back)
-//     yaw   = rotation around model Z axis (spins upright)
+// Apply pitch→roll→yaw Euler rotation to a point in model space.
+//
+// Model axes:  X = right,  Y = toward camera (face direction),  Z = up on screen.
+//
+//   pitch  — rotation around X (side axis):    positive = top tilts away from camera
+//   roll   — rotation around Y (face axis):    positive = right side tilts down
+//   yaw    — rotation around Z (vertical axis): positive = CCW from above (right swings toward camera)
 ControllerView::V3 ControllerView::rotate(V3 v) const {
-    // Roll around Z axis (face axis)
-    float cr = cosf(roll_),  sr = sinf(roll_);
-    float x1 =  cr * v.x - sr * v.z;
-    float z1 =  sr * v.x + cr * v.z;
-    float y1 =  v.y;
-
-    // Pitch around X axis (side axis)
+    // 1. Pitch around X axis (side — tilts top toward/away from camera)
     float cp = cosf(pitch_), sp = sinf(pitch_);
-    float y2 =  cp * y1 - sp * z1;
-    float z2 =  sp * y1 + cp * z1;
-    float x2 =  x1;
+    float y1 =  cp * v.y - sp * v.z;
+    float z1 =  sp * v.y + cp * v.z;
+    float x1 =  v.x;
 
-    // Yaw around Y axis (up axis)
+    // 2. Roll around Y axis (face/depth — tilts left/right)
+    float cr = cosf(roll_),  sr = sinf(roll_);
+    float x2 =  cr * x1 + sr * z1;
+    float z2 = -sr * x1 + cr * z1;
+    float y2 =  y1;
+
+    // 3. Yaw around Z axis (vertical — spins like a top)
     float cy = cosf(yaw_),   sy = sinf(yaw_);
-    float x3 =  cy * x2 + sy * z2;
-    float z3 = -sy * x2 + cy * z2;
-    float y3 =  y2;
+    float x3 =  cy * x2 - sy * y2;
+    float y3 =  sy * x2 + cy * y2;
+    float z3 =  z2;
 
     return { x3, y3, z3 };
 }
@@ -229,10 +230,10 @@ void ControllerView::paintEvent(QPaintEvent*) {
         QPen arcPen(QColor(0x44, 0x88, 0xff), 1.5f);
         p.setPen(arcPen);
 
-        // Horizon line (rotates with roll)
+        // Horizon line (rotates with roll — positive roll = right side down = CW tilt)
         float rollDeg = roll_ * 180.f / float(M_PI);
         p.save();
-        p.rotate(-rollDeg);
+        p.rotate(rollDeg);
         p.drawLine(-hr, 0, hr, 0);
         // Pitch tick
         float pitchPx = pitch_ * 180.f / float(M_PI) * hr / 90.f;
@@ -303,9 +304,13 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
     float roll_acc  = atan2f( ax,  az);
     float pitch_acc = atan2f(-ay,  az);
 
-    float gx_rad = gyro[0] * float(M_PI)/180.f;
-    float gy_rad = gyro[1] * float(M_PI)/180.f;
-    float gz_rad = gyro[2] * float(M_PI)/180.f;
+    // DSU gyro axis → physical rotation mapping (from DEFAULT_GYRO src assignments):
+    //   gyro[0] = raw[0] (side axis)       → rotation around X → pitch rate
+    //   gyro[1] = -raw[2] (top-bottom axis) → rotation around Z → -yaw rate (inverted in DEFAULT_GYRO)
+    //   gyro[2] = raw[1] (face-depth axis)  → rotation around Y → roll rate
+    float pitch_rate = gyro[0] * float(M_PI)/180.f;
+    float roll_rate  = gyro[2] * float(M_PI)/180.f;
+    float yaw_rate   = -gyro[1] * float(M_PI)/180.f;  // negated: DEFAULT_GYRO inv_y=true
 
     if (!filterInit_) {
         roll_  = roll_acc;
@@ -313,9 +318,9 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
         yaw_   = 0.f;
         filterInit_ = true;
     } else {
-        roll_  = ALPHA * (roll_  + gx_rad * dt) + (1.f - ALPHA) * roll_acc;
-        pitch_ = ALPHA * (pitch_ + gy_rad * dt) + (1.f - ALPHA) * pitch_acc;
-        yaw_  += gz_rad * dt;
+        roll_  = ALPHA * (roll_  + roll_rate  * dt) + (1.f - ALPHA) * roll_acc;
+        pitch_ = ALPHA * (pitch_ + pitch_rate * dt) + (1.f - ALPHA) * pitch_acc;
+        yaw_  += yaw_rate * dt;
     }
 
     update();
