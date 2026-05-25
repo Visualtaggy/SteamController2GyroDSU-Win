@@ -19,7 +19,7 @@ jobs:
             cmake g++ pkg-config \
             libhidapi-dev \
             libudev-dev \
-            qt6-base-dev libqt6network6-dev libgl1-mesa-dev \
+            qt6-base-dev libgl1-mesa-dev \
             zip
 
       - name: Build
