@@ -162,12 +162,12 @@ ok "Service enabled and started"
 
 # ── Icon installation ────────────────────────────────────────────────────────
 hdr "Installing application icon"
-ICON_SCALABLE="$HOME/.local/share/icons/hicolor/scalable/apps"
-mkdir -p "$ICON_SCALABLE"
+ICON_512="$HOME/.local/share/icons/hicolor/512x512/apps"
+mkdir -p "$ICON_512"
 
-if [ -f "$SCRIPT_DIR/sc2gyrodsu.svg" ]; then
-    cp "$SCRIPT_DIR/sc2gyrodsu.svg" "$ICON_SCALABLE/sc2gyrodsu.svg"
-    ok "SVG icon installed"
+if [ -f "$SCRIPT_DIR/sc2gyrodsu.png" ]; then
+    cp "$SCRIPT_DIR/sc2gyrodsu.png" "$ICON_512/sc2gyrodsu.png"
+    ok "512x512 icon installed"
 
     # Install pre-rendered PNG fallbacks bundled in the release package.
     for SIZE in 16 32 48 128 256; do
@@ -180,17 +180,33 @@ if [ -f "$SCRIPT_DIR/sc2gyrodsu.svg" ]; then
         fi
     done
 
-    # If no PNGs were bundled but rsvg-convert is present, generate them live.
-    if ! ls "$SCRIPT_DIR"/sc2gyrodsu_*.png >/dev/null 2>&1 \
-       && command -v rsvg-convert >/dev/null 2>&1; then
-        for SIZE in 16 32 48 128 256; do
-            ICON_PNG="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
-            mkdir -p "$ICON_PNG"
-            rsvg-convert -w "$SIZE" -h "$SIZE" \
-                "$ICON_SCALABLE/sc2gyrodsu.svg" \
-                -o "$ICON_PNG/sc2gyrodsu.png" 2>/dev/null \
-                && ok "${SIZE}x${SIZE} PNG icon generated"
-        done
+    # If no pre-sized PNGs were bundled, generate them now using Python or
+    # ImageMagick (at least one should be present on any modern distro).
+    if ! ls "$SCRIPT_DIR"/sc2gyrodsu_*.png >/dev/null 2>&1; then
+        if command -v python3 >/dev/null 2>&1 && \
+           python3 -c "from PIL import Image" 2>/dev/null; then
+            python3 - "$SCRIPT_DIR/sc2gyrodsu.png" "$HOME/.local/share/icons/hicolor" << 'PYEOF'
+import sys
+from PIL import Image
+src, icon_dir = sys.argv[1], sys.argv[2]
+img = Image.open(src)
+import os
+for size in (16, 32, 48, 128, 256):
+    d = f"{icon_dir}/{size}x{size}/apps"
+    os.makedirs(d, exist_ok=True)
+    img.resize((size, size), Image.LANCZOS).save(f"{d}/sc2gyrodsu.png")
+PYEOF
+            ok "Icon sizes generated via Python"
+        elif command -v magick >/dev/null 2>&1; then
+            for SIZE in 16 32 48 128 256; do
+                ICON_PNG="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
+                mkdir -p "$ICON_PNG"
+                magick "$SCRIPT_DIR/sc2gyrodsu.png" \
+                    -resize "${SIZE}x${SIZE}" \
+                    "$ICON_PNG/sc2gyrodsu.png" 2>/dev/null \
+                    && ok "${SIZE}x${SIZE} icon generated via ImageMagick"
+            done
+        fi
     fi
 
     # Refresh icon caches (best-effort — not all envs have these tools).
