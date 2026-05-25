@@ -45,7 +45,7 @@ AxisWizard::AxisWizard(const Sc2Config& current, QWidget* parent)
 {
     setWindowTitle("Axis Auto-Detect Wizard");
     setMinimumWidth(480);
-    setMinimumHeight(320);
+    setMinimumHeight(400);
     setModal(true);
 
     auto* lay = new QVBoxLayout(this);
@@ -55,7 +55,6 @@ AxisWizard::AxisWizard(const Sc2Config& current, QWidget* parent)
     instrLbl_ = new QLabel;
     instrLbl_->setWordWrap(true);
     instrLbl_->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-    instrLbl_->setMinimumHeight(140);
     instrLbl_->setTextFormat(Qt::RichText);
     lay->addWidget(instrLbl_, 1);
 

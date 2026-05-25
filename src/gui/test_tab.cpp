@@ -132,7 +132,7 @@ void TestTab::setupUi() {
     auto* guide = new QLabel(
         "<small>"
         "<b>To verify axis mapping:</b><br>"
-        "① Lay flat face-up → ADI full sky (blue)<br>"
+        "① Lay flat face-up → ADI level (50/50 sky/ground)<br>"
         "② Tilt right → horizon tilts, sky shifts right<br>"
         "③ Tilt nose up → horizon drops, more sky shows<br>"
         "④ Spin clockwise → orange yaw arc grows right<br><br>"

@@ -92,9 +92,10 @@ void ControllerView::paintEvent(QPaintEvent*) {
         p.setPen(yp);
         p.setBrush(Qt::NoBrush);
         // Qt: 0° = 3 o'clock, positive = CCW, angles in 1/16 °.
-        // 12 o'clock = 90°.  Positive yaw (CCW from above) → positive span.
+        // 12 o'clock = 90°.  Negate so CW spin (positive yaw_) draws a CW
+        // arc that grows to the right, matching physical rotation.
         p.drawArc(cx - yr, cy - yr, yr * 2, yr * 2,
-                  90 * 16, int(yawDeg * 16.f));
+                  90 * 16, int(-yawDeg * 16.f));
     }
 
     // ── 2. ADI ball — clip, roll, pitch ──────────────────────────────────────
