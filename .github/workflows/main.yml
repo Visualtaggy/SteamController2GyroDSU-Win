@@ -57,13 +57,9 @@ jobs:
 
           # Application icon — 512 px master + downscaled PNG sizes for XDG
           cp assets/icons/sc2gyrodsu.png SteamControllerGyroDSUSetup/
-          python3 - << 'PYEOF'
-from PIL import Image
-src = Image.open("assets/icons/sc2gyrodsu.png")
-for size in (16, 32, 48, 128, 256):
-    src.resize((size, size), Image.LANCZOS).save(
-        f"SteamControllerGyroDSUSetup/sc2gyrodsu_{size}.png")
-PYEOF
+          python3 scripts/resize_icon.py \
+            assets/icons/sc2gyrodsu.png \
+            SteamControllerGyroDSUSetup
 
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
 
