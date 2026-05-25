@@ -270,7 +270,7 @@ void AxisWizard::onSample(int /*slot*/,
     float gx, float gy, float gz, quint64 /*ts*/)
 {
     if (activeSamples_)
-        activeSamples_->append({{ax, ay, az}, {gx, gy, gz}});
+        activeSamples_->append(Sample{{ax, ay, az}, {gx, gy, gz}});
 }
 
 // ── Detection algorithm ───────────────────────────────────────────────────────
