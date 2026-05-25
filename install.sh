@@ -1,85 +1,271 @@
 #!/bin/sh
-cd "$(dirname "$(readlink -f "$0")")"
+# SteamControllerGyroDSU installer
+# Supports: Steam Deck (SteamOS), Bazzite, and generic Linux.
 
-echo "Stopping service if running..."
-systemctl --user -q stop  SteamControllerGyroDSU.service 2>/dev/null
-systemctl --user -q disable SteamControllerGyroDSU.service 2>/dev/null
+INSTALL_DIR="$HOME/SteamControllerGyroDSU"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+cd "$SCRIPT_DIR"
 
-echo "Installing binaries..."
-mkdir -p "$HOME/SteamControllerGyroDSU"
-cp SteamControllerGyroDSU       "$HOME/SteamControllerGyroDSU/"
-chmod +x "$HOME/SteamControllerGyroDSU/SteamControllerGyroDSU"
+# ── Colours ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; NC='\033[0m'
+info()  { printf "  %s\n" "$1"; }
+ok()    { printf "${GREEN}  ✓ %s${NC}\n" "$1"; }
+warn()  { printf "${YELLOW}  ⚠ %s${NC}\n" "$1"; }
+err()   { printf "${RED}  ✗ %s${NC}\n" "$1"; }
+hdr()   { printf "\n${GREEN}▶ %s${NC}\n" "$1"; }
 
-# Install the GUI config tool if it was included in this release.
+echo ""
+echo "╔═══════════════════════════════════════════════╗"
+echo "║    SteamControllerGyroDSU — Installer         ║"
+echo "╚═══════════════════════════════════════════════╝"
+
+# ── Platform detection ───────────────────────────────────────────────────────
+PLATFORM="linux"
+PLATFORM_NAME="Generic Linux"
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    _str="$ID ${ID_LIKE:-} ${VARIANT_ID:-}"
+    case "$_str" in
+        *bazzite*)    PLATFORM="bazzite";   PLATFORM_NAME="Bazzite"     ;;
+        *steamos*)    PLATFORM="steamdeck"; PLATFORM_NAME="Steam Deck"  ;;
+        *steamdeck*)  PLATFORM="steamdeck"; PLATFORM_NAME="Steam Deck"  ;;
+    esac
+fi
+info "Platform detected: $PLATFORM_NAME"
+
+# ── Stop existing service ────────────────────────────────────────────────────
+hdr "Stopping existing service"
+systemctl --user -q stop    SteamControllerGyroDSU.service 2>/dev/null && ok "Service stopped"  || true
+systemctl --user -q disable SteamControllerGyroDSU.service 2>/dev/null || true
+
+# ── Install binaries ─────────────────────────────────────────────────────────
+hdr "Installing binaries"
+mkdir -p "$INSTALL_DIR"
+
+cp SteamControllerGyroDSU "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/SteamControllerGyroDSU"
+ok "sc2gyrodsu daemon installed"
+
 if [ -f sc2gyrodsu-config ]; then
-    cp sc2gyrodsu-config "$HOME/SteamControllerGyroDSU/"
-    chmod +x "$HOME/SteamControllerGyroDSU/sc2gyrodsu-config"
+    cp sc2gyrodsu-config "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/sc2gyrodsu-config"
+    ok "sc2gyrodsu-config GUI installed"
 fi
 
-echo "Installing scripts..."
-cp update.sh   "$HOME/SteamControllerGyroDSU/"
-cp uninstall.sh "$HOME/SteamControllerGyroDSU/"
-chmod +x "$HOME/SteamControllerGyroDSU/update.sh"
-chmod +x "$HOME/SteamControllerGyroDSU/uninstall.sh"
+# ── Library check ────────────────────────────────────────────────────────────
+hdr "Checking library dependencies"
+_MISSING=$(ldd "$INSTALL_DIR/SteamControllerGyroDSU" 2>/dev/null \
+    | awk '/not found/{print $1}' | tr '\n' ' ')
 
-echo "Installing service..."
+if [ -z "$_MISSING" ]; then
+    ok "All libraries satisfied"
+else
+    warn "Missing libraries: $_MISSING"
+    case "$PLATFORM" in
+        bazzite)
+            info "On Bazzite, install via Homebrew:  brew install hidapi"
+            info "Or via rpm-ostree (requires reboot): rpm-ostree install hidapi"
+            ;;
+        steamdeck)
+            info "On SteamOS: sudo pacman -S hidapi"
+            info "(Package resets on OS updates — prefer the static release binary)"
+            ;;
+        *)
+            info "Install libhidapi-hidraw for your distribution."
+            info "e.g. Ubuntu/Debian: sudo apt install libhidapi-hidraw0"
+            info "     Arch:          sudo pacman -S hidapi"
+            info "     Fedora:        sudo dnf install hidapi"
+            ;;
+    esac
+fi
+
+# ── udev rules ───────────────────────────────────────────────────────────────
+hdr "HID device access (udev)"
+
+# Check whether Steam or another package already ships rules for Valve VID 28de.
+_STEAM_RULES=$(find /lib/udev/rules.d /usr/lib/udev/rules.d /run/udev/rules.d \
+    2>/dev/null -name "*.rules" -exec grep -l "idVendor.*28de\|28de.*idVendor" {} \; \
+    | head -1)
+
+if [ -n "$_STEAM_RULES" ]; then
+    ok "Valve HID rules already present: $(basename "$_STEAM_RULES")"
+    info "No custom udev rules needed."
+    _INSTALLED_RULES=0
+else
+    info "No existing Valve HID rules found — installing our own."
+    _RULES_DEST="/etc/udev/rules.d/99-sc2gyrodsu.rules"
+    if sudo cp "$SCRIPT_DIR/99-sc2gyrodsu.rules" "$_RULES_DEST" 2>/dev/null; then
+        sudo udevadm control --reload-rules 2>/dev/null || true
+        sudo udevadm trigger --subsystem-match=hidraw 2>/dev/null || true
+        ok "udev rules installed to $_RULES_DEST"
+        _INSTALLED_RULES=1
+    else
+        warn "Could not write to /etc/udev/rules.d/ (read-only or no sudo)."
+        info "If the controller is not detected, manually copy:"
+        info "  sudo cp $SCRIPT_DIR/99-sc2gyrodsu.rules /etc/udev/rules.d/"
+        info "  sudo udevadm control --reload-rules && sudo udevadm trigger"
+        _INSTALLED_RULES=0
+    fi
+fi
+
+# ── input group membership ───────────────────────────────────────────────────
+hdr "User group membership"
+if id -nG "$USER" | tr ' ' '\n' | grep -qx "input"; then
+    ok "User '$USER' is already in the 'input' group"
+else
+    info "Adding '$USER' to the 'input' group..."
+    if sudo usermod -aG input "$USER" 2>/dev/null; then
+        ok "Added. Changes take effect after next login or reboot."
+    else
+        warn "Could not add '$USER' to the input group."
+        info "Run manually: sudo usermod -aG input $USER  (then log out and back in)"
+    fi
+fi
+
+# ── Install scripts and rules ────────────────────────────────────────────────
+hdr "Installing scripts"
+cp update.sh   "$INSTALL_DIR/"
+cp uninstall.sh "$INSTALL_DIR/"
+cp 99-sc2gyrodsu.rules "$INSTALL_DIR/" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/update.sh" "$INSTALL_DIR/uninstall.sh"
+# Pass _INSTALLED_RULES to uninstall.sh via a marker file
+if [ "${_INSTALLED_RULES:-0}" = "1" ]; then
+    touch "$INSTALL_DIR/.udev_rules_installed"
+else
+    rm -f "$INSTALL_DIR/.udev_rules_installed"
+fi
+ok "Scripts installed"
+
+# ── systemd user service ─────────────────────────────────────────────────────
+hdr "Installing systemd user service"
 mkdir -p "$HOME/.config/systemd/user"
 cat > "$HOME/.config/systemd/user/SteamControllerGyroDSU.service" << EOF
 [Unit]
 Description=Steam Controller Gyro DSU Server
+Documentation=https://github.com/TyanColte/Steam-Controller-GyroDSU
 After=sockets.target
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 Restart=always
-RestartSec=1
-ExecStart=$HOME/SteamControllerGyroDSU/SteamControllerGyroDSU --port 26761
+RestartSec=2
+ExecStart=$INSTALL_DIR/SteamControllerGyroDSU --port 26761
 
 [Install]
 WantedBy=default.target
 EOF
 
+systemctl --user daemon-reload
 systemctl --user enable --now SteamControllerGyroDSU.service
+ok "Service enabled and started"
 
-echo "Installing desktop shortcuts..."
+# ── Desktop shortcuts + app menu ────────────────────────────────────────────
+hdr "Installing desktop shortcuts"
+DESKTOP_DIR="$HOME/Desktop"
+APP_DIR="$HOME/.local/share/applications"
+mkdir -p "$DESKTOP_DIR" "$APP_DIR"
 
-cat > "$HOME/Desktop/Update SteamControllerGyroDSU.desktop" << EOF
-[Desktop Entry]
+# Helper: write a .desktop file with @INSTALL_DIR@ substituted,
+# then install it to both the Desktop and the app menu.
+install_desktop() {
+    _name="$1"    # e.g. "sc2gyrodsu-update"
+    _content="$2" # here-doc content
+    printf '%s' "$_content" \
+        | sed "s|@INSTALL_DIR@|$INSTALL_DIR|g" \
+        > "$DESKTOP_DIR/${_name}.desktop"
+    chmod +x "$DESKTOP_DIR/${_name}.desktop"
+    # Also install to XDG app menu (no chmod needed — menus don't exec directly)
+    cp "$DESKTOP_DIR/${_name}.desktop" "$APP_DIR/${_name}.desktop"
+}
+
+install_desktop "sc2gyrodsu-update" "[Desktop Entry]
+Version=1.1
+Type=Application
 Name=Update SteamControllerGyroDSU
-Exec=$HOME/SteamControllerGyroDSU/update.sh
+GenericName=Gyro DSU Updater
+Comment=Download and install the latest SteamControllerGyroDSU release
+Exec=@INSTALL_DIR@/update.sh
 Icon=system-software-update
 Terminal=true
-Type=Application
-EOF
-chmod +x "$HOME/Desktop/Update SteamControllerGyroDSU.desktop"
+Categories=Game;System;
+Keywords=steam;controller;gyro;dsu;update;
+StartupNotify=false"
 
-cat > "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop" << EOF
-[Desktop Entry]
+install_desktop "sc2gyrodsu-uninstall" "[Desktop Entry]
+Version=1.1
+Type=Application
 Name=Uninstall SteamControllerGyroDSU
-Exec=$HOME/SteamControllerGyroDSU/uninstall.sh
+GenericName=Gyro DSU Uninstaller
+Comment=Remove SteamControllerGyroDSU and its service
+Exec=@INSTALL_DIR@/uninstall.sh
 Icon=edit-delete
 Terminal=true
-Type=Application
-EOF
-chmod +x "$HOME/Desktop/Uninstall SteamControllerGyroDSU.desktop"
+Categories=Game;System;
+Keywords=steam;controller;gyro;dsu;uninstall;
+StartupNotify=false"
 
-# Desktop shortcut for the GUI config tool (only if binary is present).
-if [ -f "$HOME/SteamControllerGyroDSU/sc2gyrodsu-config" ]; then
-    cat > "$HOME/Desktop/SteamControllerGyroDSU Config.desktop" << EOF
-[Desktop Entry]
+if [ -f "$INSTALL_DIR/sc2gyrodsu-config" ]; then
+    install_desktop "sc2gyrodsu-config" "[Desktop Entry]
+Version=1.1
+Type=Application
 Name=SteamControllerGyroDSU Config
-Exec=$HOME/SteamControllerGyroDSU/sc2gyrodsu-config
+GenericName=Gyro DSU Configuration
+Comment=Configure axis mapping and calibrate gyro for Steam Controller 2
+Exec=@INSTALL_DIR@/sc2gyrodsu-config
 Icon=input-gamepad
 Terminal=false
-Type=Application
-EOF
-    chmod +x "$HOME/Desktop/SteamControllerGyroDSU Config.desktop"
+Categories=Game;Settings;
+Keywords=steam;controller;gyro;dsu;cemuhook;calibrate;
+StartupNotify=true"
 fi
 
+# Refresh the app menu so shortcuts appear immediately (best-effort)
+update-desktop-database "$APP_DIR" 2>/dev/null || true
+
+ok "Desktop shortcuts and app-menu entries created"
+
+# Remove the one-shot installer .desktop — it served its purpose and
+# the Config/Update/Uninstall shortcuts replace it.
+rm -f "$DESKTOP_DIR/SteamControllerGyroDSU.desktop"
+
+# ── Post-install summary ─────────────────────────────────────────────────────
 echo ""
-echo "Done! SteamControllerGyroDSU is running on port 26761."
-echo "Point your emulator at 127.0.0.1:26761"
+echo "╔═══════════════════════════════════════════════╗"
+echo "║    Installation complete!                     ║"
+echo "╚═══════════════════════════════════════════════╝"
 echo ""
-read -n 1 -s -r -p "Press any key to exit."
+echo "  Service : running on  127.0.0.1:26761"
+echo "  Emulator: point at    127.0.0.1:26761  (slot 0 = first controller)"
+if systemctl --user is-active --quiet SteamControllerGyroDSU.service 2>/dev/null; then
+    printf "  Status  : ${GREEN}Running${NC}\n"
+else
+    printf "  Status  : ${RED}Not running${NC} — check: systemctl --user status SteamControllerGyroDSU\n"
+fi
+echo ""
+
+case "$PLATFORM" in
+    steamdeck)
+        echo "  ┌─ Steam Deck notes ──────────────────────────────────────────────┐"
+        echo "  │ • Files in ~/SteamControllerGyroDSU/ survive SteamOS updates.  │"
+        echo "  │ • After an OS update, run 'Update SteamControllerGyroDSU' from │"
+        echo "  │   the Desktop to refresh the service and udev rules if needed. │"
+        echo "  │ • Use Desktop Mode to play with gyro in emulators.             │"
+        echo "  └────────────────────────────────────────────────────────────────┘"
+        ;;
+    bazzite)
+        echo "  ┌─ Bazzite notes ────────────────────────────────────────────────┐"
+        echo "  │ • The service runs as a user systemd service and persists       │"
+        echo "  │   across Bazzite updates (user home is on a separate mount).   │"
+        echo "  │ • Config file: ~/.config/sc2gyrodsu/config.ini                 │"
+        if [ -f "$INSTALL_DIR/sc2gyrodsu-config" ]; then
+        echo "  │ • Use the 'SteamControllerGyroDSU Config' desktop shortcut     │"
+        echo "  │   to remap axes and run gyro calibration.                      │"
+        fi
+        echo "  └────────────────────────────────────────────────────────────────┘"
+        ;;
+esac
+
+echo ""
+read -n 1 -s -r -p "  Press any key to exit."
 echo ""

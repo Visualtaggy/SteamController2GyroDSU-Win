@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QThread>
 #include "config.h"
+#include "test_tab.h"
 
 namespace sc2 {
 
@@ -69,6 +70,9 @@ private:
 
     // ── service refresh ──
     QTimer* svcTimer_ = nullptr;
+
+    // ── test tab ──
+    TestTab* testTab_ = nullptr;
 
     // ── calibration worker ──
     QThread* calibThread_ = nullptr;

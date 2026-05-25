@@ -17,12 +17,16 @@ jobs:
           sudo apt-get install -y \
             cmake g++ pkg-config \
             libhidapi-dev \
-            qt6-base-dev libgl1-mesa-dev \
+            libudev-dev \
+            qt6-base-dev libqt6network6-dev libgl1-mesa-dev \
             zip
 
       - name: Build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          # SC2_STATIC_HIDAPI=ON links libhidapi-hidraw.a statically so the
+          # released binary runs on Steam Deck (SteamOS/Arch), Bazzite (Fedora),
+          # and generic Linux without needing libhidapi-hidraw installed.
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DSC2_STATIC_HIDAPI=ON
           cmake --build build --parallel
 
       - name: Package
@@ -32,21 +36,23 @@ jobs:
           # Daemon (required)
           cp build/sc2gyrodsu SteamControllerGyroDSUSetup/SteamControllerGyroDSU
 
-          # GUI config tool (included only if Qt6 was found and it was built)
+          # GUI config tool (if Qt6 was found and built)
           if [ -f build/sc2gyrodsu-config ]; then
             cp build/sc2gyrodsu-config SteamControllerGyroDSUSetup/sc2gyrodsu-config
           fi
 
-          cp install.sh              SteamControllerGyroDSUSetup/
-          cp sc2gyrodsu.service      SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
-          cp update.sh               SteamControllerGyroDSUSetup/
-          cp uninstall.sh            SteamControllerGyroDSUSetup/
-          cp SteamControllerGyroDSU.desktop             SteamControllerGyroDSUSetup/
-          cp uninstall-steamcontrollergyrodsu.desktop   SteamControllerGyroDSUSetup/
+          # Scripts and supporting files
+          cp install.sh                              SteamControllerGyroDSUSetup/
+          cp uninstall.sh                            SteamControllerGyroDSUSetup/
+          cp update.sh                               SteamControllerGyroDSUSetup/
+          cp 99-sc2gyrodsu.rules                     SteamControllerGyroDSUSetup/
+          cp sc2gyrodsu.service                      SteamControllerGyroDSUSetup/SteamControllerGyroDSU.service
+          cp SteamControllerGyroDSU.desktop          SteamControllerGyroDSUSetup/
+          cp uninstall-steamcontrollergyrodsu.desktop SteamControllerGyroDSUSetup/
 
           zip -r SteamControllerGyroDSUSetup.zip SteamControllerGyroDSUSetup/
 
-      - name: Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: SteamControllerGyroDSU

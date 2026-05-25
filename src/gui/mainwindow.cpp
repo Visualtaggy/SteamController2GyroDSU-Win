@@ -91,6 +91,8 @@ void MainWindow::setupUi() {
     tabs->addTab(buildServerTab(), "Server Settings");
     tabs->addTab(buildAxisTab(),   "Axis Mapping");
     tabs->addTab(buildCalibTab(),  "Calibration");
+    testTab_ = new TestTab(cfg_.port);
+    tabs->addTab(testTab_, "Test / Verify");
     root->addWidget(tabs, 1);
 
     // ── bottom buttons ──
@@ -338,8 +340,10 @@ void MainWindow::onSaveApply() {
             "Could not write to " + QString::fromStdString(Sc2Config::configPath()));
         return;
     }
-    // Restart the service so it picks up the new config.
+    // Restart the service so it picks up the new config,
+    // and reconnect the test tab's DSU client to the new port.
     onServiceRestart();
+    if (testTab_) testTab_->setPort(cfg_.port);
     statusBar()->showMessage("Saved — service restarting…", 3000);
 }
 
