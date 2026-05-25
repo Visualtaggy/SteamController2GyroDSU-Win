@@ -98,9 +98,12 @@ AxisWizard::~AxisWizard() {
 
 void AxisWizard::goToStage(Stage s) {
     stage_ = s;
+    waitingConfirm_ = false;
     collectTimer_->stop();
     progBar_->setVisible(false);
+    activeSamples_ = nullptr;
     nextBtn_->setEnabled(true);
+    nextBtn_->setText("Next");
     statusLbl_->clear();
 
     switch (s) {
@@ -122,12 +125,10 @@ void AxisWizard::goToStage(Stage s) {
             "<b>Applying neutral mapping and restarting service…</b><br><br>"
             "This takes about 2–3 seconds. Please wait.");
         nextBtn_->setEnabled(false);
-        nextBtn_->setText("Next");
         progBar_->setVisible(true);
         progBar_->setValue(0);
         elapsedMs_ = 0;
         collectMs_ = 2800;
-        activeSamples_ = nullptr;
         {
             Sc2Config id = identityConfig(savedCfg_);
             id.save();
@@ -137,69 +138,68 @@ void AxisWizard::goToStage(Stage s) {
         collectTimer_->start();
         break;
 
+    // ── Gesture stages: show instruction and wait for user confirmation ───────
+    // Collection begins only after the user presses Begin ↵ or taps the
+    // controller (detected as an acceleration spike > 1.8 g in onSample).
+    // An 800 ms settle delay after confirmation lets the controller stabilise.
+
     // ────────────────────────────────────────────────────────────────────────
     case FLAT:
         instrLbl_->setText(
             "<b style='font-size:12pt'>① Place the controller flat, face up</b><br><br>"
-            "Set it on a table or flat surface. Do <b>not</b> touch or tilt it.<br>"
-            "Hold still for <b>5 seconds</b> while data is collected.");
-        nextBtn_->setEnabled(false);
-        progBar_->setVisible(true);
-        progBar_->setValue(0);
-        elapsedMs_ = 0;
+            "Set it on a table face up. Do <b>not</b> touch or tilt it.<br>"
+            "Position it first, then confirm — data collects for <b>5 seconds</b>.<br>"
+            "Keep it perfectly still during collection.");
         collectMs_ = 5000;
-        flatSamples_.clear();
-        activeSamples_ = &flatSamples_;
-        collectTimer_->start();
+        waitingConfirm_ = true;
+        nextBtn_->setText("Begin ↵");
+        statusLbl_->setText(
+            "<small><i>Place controller flat, then press <b>Begin ↵</b> "
+            "or tap any button on the controller.</i></small>");
         break;
 
     // ────────────────────────────────────────────────────────────────────────
     case TILT_RIGHT:
         instrLbl_->setText(
             "<b style='font-size:12pt'>② Tilt the RIGHT SIDE down</b><br><br>"
-            "Pick up the controller and tilt the right side down "
-            "by about <b>30–45°</b>. Hold that angle still for <b>5 seconds</b>.");
-        nextBtn_->setEnabled(false);
-        progBar_->setVisible(true);
-        progBar_->setValue(0);
-        elapsedMs_ = 0;
+            "Tilt the right side down by about <b>30–45°</b>.<br>"
+            "Hold that angle, confirm, then keep still for <b>5 seconds</b>.");
         collectMs_ = 5000;
-        tiltRightSamples_.clear();
-        activeSamples_ = &tiltRightSamples_;
-        collectTimer_->start();
+        waitingConfirm_ = true;
+        nextBtn_->setText("Begin ↵");
+        statusLbl_->setText(
+            "<small><i>Hold the tilt, then press <b>Begin ↵</b> "
+            "or tap any button on the controller.</i></small>");
         break;
 
     // ────────────────────────────────────────────────────────────────────────
     case TILT_TOP:
         instrLbl_->setText(
             "<b style='font-size:12pt'>③ Tilt the TOP EDGE away from you</b><br><br>"
-            "Lay it flat again, then tilt the top edge (shoulder buttons) "
-            "<b>away</b> from you by about 30–45°. Hold still for <b>5 seconds</b>.");
-        nextBtn_->setEnabled(false);
-        progBar_->setVisible(true);
-        progBar_->setValue(0);
-        elapsedMs_ = 0;
+            "Lay it flat, then tilt the top edge (shoulder buttons) "
+            "<b>away</b> from you by about 30–45°.<br>"
+            "Hold that angle, confirm, then keep still for <b>5 seconds</b>.");
         collectMs_ = 5000;
-        tiltTopSamples_.clear();
-        activeSamples_ = &tiltTopSamples_;
-        collectTimer_->start();
+        waitingConfirm_ = true;
+        nextBtn_->setText("Begin ↵");
+        statusLbl_->setText(
+            "<small><i>Hold the tilt, then press <b>Begin ↵</b> "
+            "or tap any button on the controller.</i></small>");
         break;
 
     // ────────────────────────────────────────────────────────────────────────
     case SPIN:
         instrLbl_->setText(
             "<b style='font-size:12pt'>④ Spin it clockwise on the table</b><br><br>"
-            "Lay it flat and spin the controller <b>clockwise</b> "
-            "(viewed from above) — keep spinning for <b>5 seconds</b>.<br>"
-            "This detects the yaw direction.");
-        nextBtn_->setEnabled(false);
-        progBar_->setVisible(true);
-        progBar_->setValue(0);
-        elapsedMs_ = 0;
+            "Lay it flat. Press <b>Begin ↵</b>, then immediately start spinning "
+            "the controller <b>clockwise</b> (viewed from above).<br>"
+            "Keep spinning continuously for <b>5 seconds</b>.");
         collectMs_ = 5000;
-        spinSamples_.clear();
-        activeSamples_ = &spinSamples_;
-        collectTimer_->start();
+        waitingConfirm_ = true;
+        nextBtn_->setText("Begin ↵");
+        statusLbl_->setText(
+            "<small><i>Press <b>Begin ↵</b> or tap the controller, "
+            "then spin clockwise.</i></small>");
         break;
 
     // ────────────────────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ void AxisWizard::goToStage(Stage s) {
                 "the original mapping.");
             statusLbl_->setText(
                 "<i>Gyro roll/pitch inversions are estimated — "
-                "verify with the 3D wireframe in the Test / Verify tab.</i>");
+                "verify with the ADI in the Test / Verify tab.</i>");
             nextBtn_->setText("Apply");
         } else {
             instrLbl_->setText(
@@ -223,6 +223,38 @@ void AxisWizard::goToStage(Stage s) {
         }
         break;
     }
+}
+
+// ── Confirmation + settle before data collection ──────────────────────────────
+
+void AxisWizard::startCollection() {
+    if (!waitingConfirm_) return;
+    waitingConfirm_ = false;
+    nextBtn_->setEnabled(false);
+    statusLbl_->setText("<small><i>Settling… hold still.</i></small>");
+
+    // Capture the stage so the lambda can safely abort if the user cancelled.
+    const Stage targetStage = stage_;
+
+    // 800 ms settle: lets the controller stop vibrating after a button tap,
+    // and gives time to reach the correct position after pressing Enter.
+    QTimer::singleShot(800, this, [this, targetStage]() {
+        if (stage_ != targetStage) return;  // user cancelled during settle
+
+        switch (stage_) {
+        case FLAT:       flatSamples_.clear();      activeSamples_ = &flatSamples_;      break;
+        case TILT_RIGHT: tiltRightSamples_.clear(); activeSamples_ = &tiltRightSamples_; break;
+        case TILT_TOP:   tiltTopSamples_.clear();   activeSamples_ = &tiltTopSamples_;   break;
+        case SPIN:       spinSamples_.clear();      activeSamples_ = &spinSamples_;      break;
+        default: return;
+        }
+
+        progBar_->setVisible(true);
+        progBar_->setValue(0);
+        elapsedMs_ = 0;
+        statusLbl_->clear();
+        collectTimer_->start();
+    });
 }
 
 // ── Timer / data collection ───────────────────────────────────────────────────
@@ -269,6 +301,15 @@ void AxisWizard::onSample(int /*slot*/,
     float ax, float ay, float az,
     float gx, float gy, float gz, quint64 /*ts*/)
 {
+    // While waiting for confirmation, an acceleration spike (button press or
+    // tap) above 1.8 g triggers collection — same as pressing Begin ↵.
+    if (waitingConfirm_) {
+        const float mag = sqrtf(ax*ax + ay*ay + az*az);
+        if (mag > 1.8f)
+            startCollection();
+        return;
+    }
+
     if (activeSamples_)
         activeSamples_->append(Sample{{ax, ay, az}, {gx, gy, gz}});
 }
@@ -404,6 +445,11 @@ bool AxisWizard::buildMapping() {
 // ── Button handlers ───────────────────────────────────────────────────────────
 
 void AxisWizard::onNext() {
+    // Gesture stages sit in waitingConfirm_ until Begin ↵ is pressed.
+    if (waitingConfirm_) {
+        startCollection();
+        return;
+    }
     if (stage_ == INTRO) {
         goToStage(WAIT_SERVICE);
     } else if (stage_ == RESULT) {
@@ -417,6 +463,7 @@ void AxisWizard::onNext() {
 }
 
 void AxisWizard::onCancel() {
+    waitingConfirm_ = false;
     collectTimer_->stop();
     if (client_) { client_->stop(); }
     // Restore original mapping and restart

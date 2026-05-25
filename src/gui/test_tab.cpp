@@ -42,10 +42,12 @@ void TestTab::setupUi() {
     view_ = new ControllerView;
     viewLay->addWidget(view_, 1);
 
-    // Horizon indicator legend
+    // ADI legend
     auto* legend = new QLabel(
-        "<span style='color:#4488ff'>━</span> Horizon  "
-        "<span style='color:#ff8800'>┼</span> Reference");
+        "<span style='color:#4a80dd'>■</span> Sky  "
+        "<span style='color:#8a4820'>■</span> Ground  "
+        "<span style='color:#ff8800'>━</span> Yaw  "
+        "<span style='color:#ffee00'>✛</span> Aircraft");
     legend->setTextFormat(Qt::RichText);
     legend->setAlignment(Qt::AlignCenter);
     legend->setStyleSheet("font-size: 9pt;");
@@ -130,12 +132,13 @@ void TestTab::setupUi() {
     auto* guide = new QLabel(
         "<small>"
         "<b>To verify axis mapping:</b><br>"
-        "① Lay flat face-up → wireframe faces you<br>"
-        "② Tilt right → wireframe rolls right<br>"
-        "③ Tilt nose up → wireframe pitches up<br>"
-        "④ Spin clockwise → wireframe yaws CW<br><br>"
+        "① Lay flat face-up → ADI full sky (blue)<br>"
+        "② Tilt right → horizon tilts, sky shifts right<br>"
+        "③ Tilt nose up → horizon drops, more sky shows<br>"
+        "④ Spin clockwise → orange yaw arc grows right<br><br>"
         "<b>Accel Z ≈ +1.0 g when face-up</b><br>"
-        "If wrong, fix in the <i>Axis Mapping</i> tab."
+        "If wrong, re-run the <i>Axis Wizard</i> or fix<br>"
+        "manually in the <i>Axis Mapping</i> tab."
         "</small>");
     guide->setWordWrap(true);
     guide->setTextFormat(Qt::RichText);

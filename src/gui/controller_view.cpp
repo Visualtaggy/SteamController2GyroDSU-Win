@@ -42,32 +42,48 @@ void ControllerView::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    // Leave room at the bottom for the numeric readout and around the edge for
-    // the yaw arc, so compute the instrument radius accordingly.
+    // ── Readout font ──────────────────────────────────────────────────────────
+    // Text is ~30 chars ("R  -45.1°  P  -12.3°  Y +180.0°").
+    // A monospace char is ≈ 0.6 × pixelSize wide, so cap at width / (30 × 0.6)
+    // = width / 18 to guarantee the whole string always fits.
     QFont readoutFont;
     readoutFont.setFamily("monospace");
-    readoutFont.setPixelSize(std::max(9, std::min(width(), height()) / 14));
+    readoutFont.setPixelSize(std::max(7,
+        std::min(std::min(width(), height()) / 14,
+                 width() / 18)));
     QFontMetrics fm(readoutFont);
     const int readoutH = fm.height() + 4;
 
-    const int margin = 14;   // space for yaw arc + bezel
-    const int cx = width() / 2;
-    const int cy = (height() - readoutH) / 2;
-    const int r  = std::min(width() / 2 - margin,
-                            (height() - readoutH) / 2 - margin);
-    if (r < 20) return;
-
-    const float pitchScale = float(r) / (float(M_PI) / 2.f);  // px per radian
-
-    // Working angles
+    // ── Working angles (shared by readout and ADI) ────────────────────────────
     const float rollDeg  = roll_  * 180.f / float(M_PI);
     const float pitchDeg = pitch_ * 180.f / float(M_PI);
     float yawDeg = yaw_ * 180.f / float(M_PI);
     while (yawDeg >  180.f) yawDeg -= 360.f;
     while (yawDeg < -180.f) yawDeg += 360.f;
 
-    // Horizon offset (pixels below centre; positive = nose up = more sky)
-    const float pitchPx = pitch_ * pitchScale;
+    // ── Numeric readout — always drawn regardless of ADI size ─────────────────
+    // Pinned to the bottom of the widget so it is never clipped by the ADI.
+    {
+        p.setFont(readoutFont);
+        p.setPen(C_LABEL);
+        const QString txt = QString("R %1°  P %2°  Y %3°")
+            .arg(rollDeg,  6, 'f', 1)
+            .arg(pitchDeg, 6, 'f', 1)
+            .arg(yawDeg,   6, 'f', 1);
+        p.drawText(QRect(0, height() - readoutH - 1, width(), readoutH + 1),
+                   Qt::AlignHCenter | Qt::AlignVCenter, txt);
+    }
+
+    // ── ADI geometry — centred in the space above the readout strip ───────────
+    const int margin = 14;   // space for yaw arc + bezel
+    const int cx = width() / 2;
+    const int cy = (height() - readoutH - 2) / 2;
+    const int r  = std::min(width() / 2 - margin,
+                            (height() - readoutH - 2) / 2 - margin);
+    if (r < 20) return;   // widget too small — readout already painted above
+
+    const float pitchScale = float(r) / (float(M_PI) / 2.f);  // px per radian
+    const float pitchPx    = pitch_ * pitchScale;
 
     // ── 1. Yaw arc (outside the instrument) ──────────────────────────────────
     if (fabsf(yawDeg) > 1.5f) {
@@ -199,19 +215,6 @@ void ControllerView::paintEvent(QPaintEvent*) {
     p.setBrush(Qt::NoBrush);
     p.setPen(QPen(C_BORDER, 3.0f));
     p.drawEllipse(cx - r, cy - r, r * 2, r * 2);
-
-    // ── 6. Numeric readout ────────────────────────────────────────────────────
-    {
-        p.setFont(readoutFont);
-        p.setPen(C_LABEL);
-        const QString txt = QString("R %1°   P %2°   Y %3°")
-            .arg(rollDeg,  6, 'f', 1)
-            .arg(pitchDeg, 6, 'f', 1)
-            .arg(yawDeg,   6, 'f', 1);
-        const int ty = cy + r + margin / 2 + readoutH;
-        p.drawText(QRect(0, ty, width(), readoutH),
-                   Qt::AlignHCenter | Qt::AlignVCenter, txt);
-    }
 }
 
 // ── Complementary filter ──────────────────────────────────────────────────────

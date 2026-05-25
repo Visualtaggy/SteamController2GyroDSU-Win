@@ -55,6 +55,7 @@ private:
     };
 
     void goToStage(Stage s);
+    void startCollection();          // begin gesture data collection after confirm
     void checkStageComplete(Stage next, const char* label);
     bool buildMapping();   // fills result_; returns false on error
 
@@ -70,8 +71,9 @@ private:
     QPushButton*  cancelBtn_  = nullptr;
 
     // ── Data collection ───────────────────────────────────────────────────────
-    Stage stage_          = INTRO;
-    DsuClient* client_    = nullptr;
+    Stage stage_             = INTRO;
+    bool  waitingConfirm_    = false;  // true while awaiting Begin / tap to start
+    DsuClient* client_       = nullptr;
     QTimer*    collectTimer_ = nullptr;
 
     int collectMs_  = 0;
