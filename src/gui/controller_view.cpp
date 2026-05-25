@@ -2,6 +2,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QColor>
+#include <QFont>
+#include <QFontMetrics>
 #include <cmath>
 #include <algorithm>
 
@@ -11,94 +13,18 @@ namespace sc2 {
 static constexpr float ALPHA  = 0.96f;
 static constexpr float MAX_DT = 0.05f;
 
-// ── SC2026 body geometry ──────────────────────────────────────────────────────
-//
-// The 2026 Steam Controller uses a conventional Xbox-like gamepad silhouette:
-// wide shoulder area at the top, slight waist taper, two grip prongs at the
-// bottom.  Haptic touchpads are small and square, located BELOW the thumbsticks
-// (not large circles at the top like the original SC).
-//
-// Model space: X = right, Y = toward camera (face), Z = up on screen.
-// Scale: 1.0 ≈ half the controller width.  Front face at Y = +0.10.
-//
-// 20-vertex outline, clockwise from top-left:
-static const ControllerView::V3 BODY[] = {
-    {-0.70f,  0.10f,  0.52f}, //  0  top-left shoulder
-    {-0.34f,  0.10f,  0.60f}, //  1  top center-left
-    { 0.34f,  0.10f,  0.60f}, //  2  top center-right
-    { 0.70f,  0.10f,  0.52f}, //  3  top-right shoulder
-    { 0.88f,  0.10f,  0.30f}, //  4  right upper arc
-    { 0.92f,  0.10f,  0.02f}, //  5  right side (widest)
-    { 0.84f,  0.10f, -0.16f}, //  6  right waist
-    { 0.66f,  0.10f, -0.30f}, //  7  right waist lower
-    { 0.64f,  0.10f, -0.66f}, //  8  right grip outer
-    { 0.48f,  0.10f, -0.86f}, //  9  right grip bottom-outer
-    { 0.28f,  0.10f, -0.93f}, // 10  right grip bottom
-    { 0.10f,  0.10f, -0.86f}, // 11  right grip inner
-    {-0.10f,  0.10f, -0.86f}, // 12  left grip inner
-    {-0.28f,  0.10f, -0.93f}, // 13  left grip bottom
-    {-0.48f,  0.10f, -0.86f}, // 14  left grip bottom-outer
-    {-0.64f,  0.10f, -0.66f}, // 15  left grip outer
-    {-0.66f,  0.10f, -0.30f}, // 16  left waist lower
-    {-0.84f,  0.10f, -0.16f}, // 17  left waist
-    {-0.92f,  0.10f,  0.02f}, // 18  left side (widest)
-    {-0.88f,  0.10f,  0.30f}, // 19  left upper arc
-};
-static const int BODY_N = 20;
-static const float FRONT_Y =  0.10f;
-static const float BACK_Y  = -0.10f;
+// ── Colours ───────────────────────────────────────────────────────────────────
+static const QColor C_SKY   (0x1a, 0x3e, 0x74);   // ADI sky blue
+static const QColor C_GROUND(0x50, 0x28, 0x08);   // ADI earth brown
+static const QColor C_YAW   (0xff, 0x88, 0x00);   // yaw arc orange
+static const QColor C_SYMBOL(0xff, 0xee, 0x00);   // aircraft symbol yellow
+static const QColor C_BORDER(0x44, 0x44, 0x66);   // bezel ring
+static const QColor C_LABEL (0xaa, 0xaa, 0xcc);   // numeric readout
 
-static ControllerView::V3 backV(ControllerView::V3 v) { return {v.x, BACK_Y, v.z}; }
-
-// ── Bumper / shoulder button outlines ─────────────────────────────────────────
-// Thin band along the top of each shoulder (front face only).
-static const ControllerView::V3 LBUMP[4] = {
-    {-0.90f, FRONT_Y, 0.52f}, {-0.38f, FRONT_Y, 0.62f},
-    {-0.38f, FRONT_Y, 0.52f}, {-0.90f, FRONT_Y, 0.44f},
-};
-static const ControllerView::V3 RBUMP[4] = {
-    { 0.38f, FRONT_Y, 0.62f}, { 0.90f, FRONT_Y, 0.52f},
-    { 0.90f, FRONT_Y, 0.44f}, { 0.38f, FRONT_Y, 0.52f},
-};
-
-// ── Thumbsticks ───────────────────────────────────────────────────────────────
-static const ControllerView::V3 LS_CTR = {-0.34f, FRONT_Y,  0.06f};
-static const ControllerView::V3 RS_CTR = { 0.34f, FRONT_Y,  0.06f};
-static constexpr float STICK_R = 0.11f;
-
-// ── D-pad (left upper area) ───────────────────────────────────────────────────
-static const ControllerView::V3 DPAD_CTR = {-0.58f, FRONT_Y, 0.32f};
-static constexpr float DPAD_ARM = 0.070f;
-static constexpr float DPAD_W   = 0.028f;
-
-// ── ABXY face buttons (right upper area) ─────────────────────────────────────
-static const ControllerView::V3 BTN_CTR = { 0.58f, FRONT_Y, 0.32f};
-static constexpr float BTN_R   = 0.048f;
-static constexpr float BTN_OFF = 0.086f;
-
-// ── Square haptic touchpads (below thumbsticks, angled slightly inward) ───────
-static const ControllerView::V3 LP_CTR = {-0.52f, FRONT_Y, -0.34f};
-static const ControllerView::V3 RP_CTR = { 0.52f, FRONT_Y, -0.34f};
-static constexpr float PAD_HW = 0.18f;   // half-width  (X)
-static constexpr float PAD_HH = 0.14f;   // half-height (Z)
-
-// ── Center cluster ────────────────────────────────────────────────────────────
-static const ControllerView::V3 STEAM_CTR = { 0.00f, FRONT_Y,  0.18f};
-static const ControllerView::V3 BACK_CTR  = {-0.18f, FRONT_Y,  0.06f};
-static const ControllerView::V3 MENU_CTR  = { 0.18f, FRONT_Y,  0.06f};
-static const ControllerView::V3 QAM_CTR   = { 0.00f, FRONT_Y,  0.06f};
-
-// ── Back grip buttons (2 per side, on back face) ─────────────────────────────
-static const ControllerView::V3 GRIP_BTNS[] = {
-    {-0.70f, BACK_Y, -0.42f}, {-0.70f, BACK_Y, -0.58f},   // left grip: L4, L5
-    { 0.70f, BACK_Y, -0.42f}, { 0.70f, BACK_Y, -0.58f},   // right grip: R4, R5
-};
-static constexpr float GRIP_BTN_R = 0.042f;
-
-// ─────────────────────────────────────────────────────────────────────────────
+// ── ControllerView ────────────────────────────────────────────────────────────
 
 ControllerView::ControllerView(QWidget* parent) : QWidget(parent) {
-    setMinimumSize(200, 160);
+    setMinimumSize(160, 165);
     QPalette pal = palette();
     pal.setColor(QPalette::Window, QColor(0x12, 0x12, 0x20));
     setPalette(pal);
@@ -110,289 +36,181 @@ void ControllerView::resetFilter() {
     filterInit_ = false;
 }
 
-// ── Math helpers ──────────────────────────────────────────────────────────────
-
-ControllerView::V3 ControllerView::rotate(V3 v) const {
-    // 1. Pitch around X
-    float cp = cosf(pitch_), sp = sinf(pitch_);
-    float y1 =  cp * v.y - sp * v.z,  z1 =  sp * v.y + cp * v.z,  x1 = v.x;
-    // 2. Roll around Y
-    float cr = cosf(roll_),  sr = sinf(roll_);
-    float x2 =  cr * x1 + sr * z1,  z2 = -sr * x1 + cr * z1,  y2 = y1;
-    // 3. Yaw around Z
-    float cy = cosf(yaw_),   sy = sinf(yaw_);
-    return { cy * x2 - sy * y2,  sy * x2 + cy * y2,  z2 };
-}
-
-QPointF ControllerView::project(V3 v, float cx, float cy, float scale) const {
-    const float camDist = 3.5f;
-    float w = camDist - v.y;
-    return { cx + scale * v.x / w,  cy - scale * v.z / w };
-}
-
-void ControllerView::drawLine(QPainter& p, V3 a, V3 b,
-                               float cx, float cy, float scale) const {
-    p.drawLine(project(rotate(a), cx, cy, scale),
-               project(rotate(b), cx, cy, scale));
-}
-
-void ControllerView::drawCircle(QPainter& p, V3 center, float r, V3 /*normal*/,
-                                float cx, float cy, float scale, int segs) const {
-    QPolygonF poly;
-    poly.reserve(segs + 1);
-    for (int i = 0; i < segs; ++i) {
-        float a = float(i) / float(segs) * 2.f * float(M_PI);
-        V3 pt = { center.x + r * cosf(a), center.y, center.z + r * sinf(a) };
-        poly << project(rotate(pt), cx, cy, scale);
-    }
-    poly << poly[0];
-    p.drawPolyline(poly);
-}
-
-// Square haptic pad: outline + small inner cross to indicate it's a touchpad.
-void ControllerView::drawSquarePad(QPainter& p, V3 ctr, float hw, float hh,
-                                    float cx, float cy, float scale) const {
-    V3 corners[4] = {
-        {ctr.x - hw, ctr.y, ctr.z + hh},
-        {ctr.x + hw, ctr.y, ctr.z + hh},
-        {ctr.x + hw, ctr.y, ctr.z - hh},
-        {ctr.x - hw, ctr.y, ctr.z - hh},
-    };
-    QPolygonF poly;
-    for (auto& c : corners) poly << project(rotate(c), cx, cy, scale);
-    poly << poly[0];
-    p.drawPolyline(poly);
-
-    // Inner cross
-    drawLine(p, {ctr.x - hw * 0.35f, ctr.y, ctr.z},
-                {ctr.x + hw * 0.35f, ctr.y, ctr.z}, cx, cy, scale);
-    drawLine(p, {ctr.x, ctr.y, ctr.z - hh * 0.35f},
-                {ctr.x, ctr.y, ctr.z + hh * 0.35f}, cx, cy, scale);
-}
-
-// D-pad cross as a proper plus-sign outline.
-void ControllerView::drawDpad(QPainter& p, V3 ctr, float arm, float w,
-                               float cx, float cy, float scale) const {
-    float x = ctr.x, y = ctr.y, z = ctr.z;
-    // Horizontal arm
-    drawLine(p, {x-arm, y, z-w}, {x-arm, y, z+w}, cx, cy, scale);
-    drawLine(p, {x+arm, y, z-w}, {x+arm, y, z+w}, cx, cy, scale);
-    drawLine(p, {x-arm, y, z+w}, {x-w,   y, z+w}, cx, cy, scale);
-    drawLine(p, {x+arm, y, z+w}, {x+w,   y, z+w}, cx, cy, scale);
-    drawLine(p, {x-arm, y, z-w}, {x-w,   y, z-w}, cx, cy, scale);
-    drawLine(p, {x+arm, y, z-w}, {x+w,   y, z-w}, cx, cy, scale);
-    // Vertical arm
-    drawLine(p, {x-w, y, z-arm}, {x-w, y, z-w}, cx, cy, scale);
-    drawLine(p, {x+w, y, z-arm}, {x+w, y, z-w}, cx, cy, scale);
-    drawLine(p, {x-w, y, z+arm}, {x-w, y, z+w}, cx, cy, scale);
-    drawLine(p, {x+w, y, z+arm}, {x+w, y, z+w}, cx, cy, scale);
-    drawLine(p, {x-w, y, z-arm}, {x+w, y, z-arm}, cx, cy, scale);
-    drawLine(p, {x-w, y, z+arm}, {x+w, y, z+arm}, cx, cy, scale);
-}
-
-// Build a QPainterPath for the front or back body outline (projected).
-void ControllerView::buildBodyPath(QPainterPath& path, float cx, float cy,
-                                    float scale, bool front) const {
-    path = QPainterPath();
-    for (int i = 0; i < BODY_N; ++i) {
-        V3 v = front ? BODY[i] : backV(BODY[i]);
-        QPointF pt = project(rotate(v), cx, cy, scale);
-        if (i == 0) path.moveTo(pt);
-        else         path.lineTo(pt);
-    }
-    path.closeSubpath();
-}
-
 // ── Paint ─────────────────────────────────────────────────────────────────────
 
 void ControllerView::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    const float cx    = width()  * 0.50f;
-    const float cy    = height() * 0.52f;
-    const float scale = std::min(width(), height()) * 0.40f;
+    // Leave room at the bottom for the numeric readout and around the edge for
+    // the yaw arc, so compute the instrument radius accordingly.
+    QFont readoutFont;
+    readoutFont.setFamily("monospace");
+    readoutFont.setPixelSize(std::max(9, std::min(width(), height()) / 14));
+    QFontMetrics fm(readoutFont);
+    const int readoutH = fm.height() + 4;
 
-    // Face normal — determines which face is toward the camera.
-    V3 faceNorm  = rotate({0.f, 1.f, 0.f});
-    bool faceFwd = (faceNorm.y > 0.f);
+    const int margin = 14;   // space for yaw arc + bezel
+    const int cx = width() / 2;
+    const int cy = (height() - readoutH) / 2;
+    const int r  = std::min(width() / 2 - margin,
+                            (height() - readoutH) / 2 - margin);
+    if (r < 20) return;
 
-    // ── Colour palette ────────────────────────────────────────────────────────
-    QColor cFront(0x00, 0xe8, 0x80);     // bright green — front face outline
-    QColor cBack (0x00, 0x72, 0x40);     // dim green    — back face outline
-    QColor cEdge (0x00, 0xaa, 0x58);     // medium       — connecting edges
-    QColor cFill (0x1c, 0x1c, 0x30);     // body fill (front)
-    QColor cFillB(0x14, 0x14, 0x22);     // body fill (back)
-    QColor cFeat (faceFwd ? cFront : cBack); // feature colour matches visible face
+    const float pitchScale = float(r) / (float(M_PI) / 2.f);  // px per radian
 
-    // ── 1. Back face (filled + outline) ──────────────────────────────────────
-    {
-        QPainterPath backPath;
-        buildBodyPath(backPath, cx, cy, scale, false);
-        p.fillPath(backPath, faceFwd ? cFillB : cFill);
-        QPen pen(faceFwd ? cBack : cFront, 1.2f);
-        p.setPen(pen);
-        p.drawPath(backPath);
+    // Working angles
+    const float rollDeg  = roll_  * 180.f / float(M_PI);
+    const float pitchDeg = pitch_ * 180.f / float(M_PI);
+    float yawDeg = yaw_ * 180.f / float(M_PI);
+    while (yawDeg >  180.f) yawDeg -= 360.f;
+    while (yawDeg < -180.f) yawDeg += 360.f;
 
-        // Back grip buttons (only visible when back faces camera)
-        if (!faceFwd) {
-            QPen gbPen(cFront, 1.2f);
-            p.setPen(gbPen);
-            for (const auto& gb : GRIP_BTNS)
-                drawCircle(p, gb, GRIP_BTN_R, {0,1,0}, cx, cy, scale, 8);
-        }
+    // Horizon offset (pixels below centre; positive = nose up = more sky)
+    const float pitchPx = pitch_ * pitchScale;
+
+    // ── 1. Yaw arc (outside the instrument) ──────────────────────────────────
+    if (fabsf(yawDeg) > 1.5f) {
+        const int yr = r + 8;
+        QPen yp(C_YAW, 4.5f, Qt::SolidLine, Qt::RoundCap);
+        p.setPen(yp);
+        p.setBrush(Qt::NoBrush);
+        // Qt: 0° = 3 o'clock, positive = CCW, angles in 1/16 °.
+        // 12 o'clock = 90°.  Positive yaw (CCW from above) → positive span.
+        p.drawArc(cx - yr, cy - yr, yr * 2, yr * 2,
+                  90 * 16, int(yawDeg * 16.f));
     }
 
-    // ── 2. Connecting edges (front ↔ back) ────────────────────────────────────
+    // ── 2. ADI ball — clip, roll, pitch ──────────────────────────────────────
     {
-        QPen pen(cEdge, 1.0f);
-        p.setPen(pen);
-        const int edges[] = {0,3,4,5,7,8,10,11,12,13,15,16,17,18,19};
-        for (int i : edges)
-            drawLine(p, BODY[i], backV(BODY[i]), cx, cy, scale);
-    }
+        QPainterPath clip;
+        clip.addEllipse(cx - r, cy - r, r * 2, r * 2);
+        p.save();
+        p.setClipPath(clip);
 
-    // ── 3. Front face (filled + outline) ──────────────────────────────────────
-    {
-        QPainterPath frontPath;
-        buildBodyPath(frontPath, cx, cy, scale, true);
-        p.fillPath(frontPath, faceFwd ? cFill : cFillB);
-        QPen pen(faceFwd ? cFront : cBack, 1.8f);
-        p.setPen(pen);
-        p.drawPath(frontPath);
-    }
+        p.save();
+        p.translate(cx, cy);
+        p.rotate(rollDeg);          // roll tilts the ball
 
-    // ── 4. Front-face features ────────────────────────────────────────────────
-    {
-        float alpha = faceFwd ? 0.95f : 0.35f;
-        cFeat.setAlphaF(alpha);
+        const int fill = r * 3;     // large enough to cover the clipped circle
 
-        // Shoulder / bumper outlines
+        // Sky (above horizon line)
+        p.fillRect(-fill, -fill, fill * 2,
+                   fill + int(pitchPx), C_SKY);
+        // Ground (below horizon line)
+        p.fillRect(-fill, int(pitchPx),
+                   fill * 2, fill, C_GROUND);
+
+        // Horizon line
+        p.setPen(QPen(Qt::white, 2.5f));
+        p.drawLine(-fill, int(pitchPx), fill, int(pitchPx));
+
+        // ── Pitch ladder ──────────────────────────────────────────────────
         {
-            QPen pen(cFeat, 1.3f);
-            p.setPen(pen);
-            // Left bumper
-            QPolygonF lb;
-            for (const auto& v : LBUMP) lb << project(rotate(v), cx, cy, scale);
-            lb << lb[0];
-            p.drawPolyline(lb);
-            // Right bumper
-            QPolygonF rb;
-            for (const auto& v : RBUMP) rb << project(rotate(v), cx, cy, scale);
-            rb << rb[0];
-            p.drawPolyline(rb);
-        }
+            const float deg2px = pitchScale * float(M_PI) / 180.f;
+            QFont lf;
+            lf.setPixelSize(std::max(8, r / 8));
+            p.setFont(lf);
+            QFontMetrics lfm(lf);
 
-        // Thumbsticks
-        {
-            QPen pen(cFeat, 1.4f);
-            p.setPen(pen);
-            drawCircle(p, LS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 16);
-            drawCircle(p, RS_CTR, STICK_R, {0,1,0}, cx, cy, scale, 16);
-        }
+            for (int deg = -80; deg <= 80; deg += 10) {
+                if (deg == 0) continue;
+                const float markY = float(deg) * deg2px;
+                // Skip if this mark is far off the visible ball area
+                if (fabsf(markY) > float(r) * 1.8f) continue;
 
-        // D-pad
-        {
-            QPen pen(cFeat, 1.2f);
-            p.setPen(pen);
-            drawDpad(p, DPAD_CTR, DPAD_ARM, DPAD_W, cx, cy, scale);
-        }
+                const bool major = (abs(deg) % 30 == 0);
+                const int  hw    = major ? r / 3 : r / 5;
+                p.setPen(QPen(Qt::white, major ? 1.5f : 1.0f));
+                p.drawLine(-hw, int(markY), hw, int(markY));
 
-        // ABXY buttons (4 circles in a diamond)
-        {
-            QPen pen(cFeat, 1.2f);
-            p.setPen(pen);
-            static const float bx[] = { BTN_OFF, -BTN_OFF,  0.f,      0.f     };
-            static const float bz[] = { 0.f,      0.f,      BTN_OFF, -BTN_OFF };
-            for (int i = 0; i < 4; ++i) {
-                V3 bc = { BTN_CTR.x + bx[i], BTN_CTR.y, BTN_CTR.z + bz[i] };
-                drawCircle(p, bc, BTN_R, {0,1,0}, cx, cy, scale, 8);
+                if (major) {
+                    QString label = QString::number(abs(deg));
+                    int lh = lfm.ascent();
+                    p.setPen(Qt::white);
+                    p.drawText( hw + 4,               int(markY) + lh / 2, label);
+                    p.drawText(-hw - 4 - lfm.horizontalAdvance(label),
+                                                       int(markY) + lh / 2, label);
+                }
             }
         }
 
-        // Square haptic touchpads
+        // ── Bank indicator triangle (on the ball, rotates with it) ────────
         {
-            QPen pen(cFeat, 1.4f);
-            p.setPen(pen);
-            drawSquarePad(p, LP_CTR, PAD_HW, PAD_HH, cx, cy, scale);
-            drawSquarePad(p, RP_CTR, PAD_HW, PAD_HH, cx, cy, scale);
+            const int ts = std::max(4, r / 13);
+            p.setPen(Qt::NoPen);
+            p.setBrush(C_SYMBOL);
+            QPolygonF tri;
+            tri << QPointF(  0,  -(r - ts * 2 - 2))   // tip (inward)
+                << QPointF(-ts,  -(r - 2))              // base left
+                << QPointF( ts,  -(r - 2));             // base right
+            p.drawPolygon(tri);
         }
 
-        // Center cluster: Steam (larger), Back, Menu, QAM
-        {
-            QPen pen(cFeat, 1.1f);
-            p.setPen(pen);
-            drawCircle(p, STEAM_CTR, 0.044f, {0,1,0}, cx, cy, scale, 12);
-            drawCircle(p, BACK_CTR,  0.026f, {0,1,0}, cx, cy, scale, 8);
-            drawCircle(p, MENU_CTR,  0.026f, {0,1,0}, cx, cy, scale, 8);
-            drawCircle(p, QAM_CTR,   0.026f, {0,1,0}, cx, cy, scale, 8);
-        }
-
-        // Back grip buttons shown as small dots on the grip edges (front view hint)
-        if (faceFwd) {
-            QPen pen(cFeat, 1.0f);
-            pen.setStyle(Qt::DotLine);
-            p.setPen(pen);
-            // Hint positions on front face near grip inner edges
-            static const V3 hintPos[] = {
-                {-0.12f, FRONT_Y, -0.50f}, {-0.12f, FRONT_Y, -0.64f},
-                { 0.12f, FRONT_Y, -0.50f}, { 0.12f, FRONT_Y, -0.64f},
-            };
-            pen.setStyle(Qt::SolidLine);
-            p.setPen(pen);
-            for (const auto& h : hintPos)
-                drawCircle(p, h, 0.030f, {0,1,0}, cx, cy, scale, 6);
-        }
+        p.restore();  // un-rotate
+        p.restore();  // un-clip
     }
 
-    // ── 5. Orientation indicator (top-right corner) ───────────────────────────
+    // ── 3. Bank-angle scale (fixed on bezel) ──────────────────────────────────
     {
-        const int hx = width()  - 56;
-        const int hy = 46;
-        const int hr = 34;
-        const int yr = hr + 5;
-
         p.save();
-        p.translate(hx, hy);
+        p.translate(cx, cy);
+        p.setPen(QPen(Qt::white, 1.5f));
 
-        // Yaw arc (orange, outer ring)
-        float yawDeg = yaw_ * 180.f / float(M_PI);
-        while (yawDeg >  180.f) yawDeg -= 360.f;
-        while (yawDeg < -180.f) yawDeg += 360.f;
-        if (fabsf(yawDeg) > 1.5f) {
-            QPen yawPen(QColor(0xff, 0x88, 0x00), 3.0f,
-                        Qt::SolidLine, Qt::RoundCap);
-            p.setPen(yawPen);
-            p.drawArc(-yr, -yr, yr * 2, yr * 2,
-                      90 * 16, int(yawDeg * 16.f));
+        static const int TICKS[] = {-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60};
+        for (int deg : TICKS) {
+            p.save();
+            p.rotate(deg);
+            const int tlen = (abs(deg) % 30 == 0 || deg == 0)
+                             ? r / 8 : r / 14;
+            p.drawLine(0, -(r + 1), 0, -(r + 1 + tlen));
+            p.restore();
         }
 
-        // Border circle
-        p.setPen(QPen(QColor(0x44, 0x44, 0x66), 1.2f));
-        p.drawEllipse(-hr, -hr, hr * 2, hr * 2);
+        p.restore();
+    }
 
-        // Horizon chord (roll + pitch)
-        float rollDeg = roll_  * 180.f / float(M_PI);
-        float pitchPx = std::clamp(pitch_ / (float(M_PI) / 2.f) * float(hr),
-                                   -float(hr), float(hr));
+    // ── 4. Aircraft symbol (fixed, centre) ────────────────────────────────────
+    {
         p.save();
-        p.rotate(rollDeg);
-        float h2 = float(hr)*float(hr) - pitchPx*pitchPx;
-        float half = (h2 > 0.f) ? sqrtf(h2) : 0.f;
-        if (half > 1.f) {
-            p.setPen(QPen(QColor(0x44, 0x88, 0xff), 2.2f));
-            p.drawLine(QPointF(-half, pitchPx), QPointF(half, pitchPx));
-            p.drawLine(QPointF(-half, pitchPx-4), QPointF(-half, pitchPx+4));
-            p.drawLine(QPointF( half, pitchPx-4), QPointF( half, pitchPx+4));
-        }
-        p.restore();
+        p.translate(cx, cy);
 
-        // Reference crosshair
-        p.setPen(QPen(QColor(0xff, 0xff, 0xff, 140), 1.0f));
-        p.drawLine(-6, 0, 6, 0);
-        p.drawLine( 0, -6, 0, 6);
+        const int wingR = r / 3;
+        const int wingH = std::max(2, r / 18);
+        QPen wingPen(C_SYMBOL, 3.0f, Qt::SolidLine, Qt::RoundCap);
+        p.setPen(wingPen);
+
+        // Left wing
+        p.drawLine(-wingR, 0, -wingR / 4, 0);
+        p.drawLine(-wingR, -wingH, -wingR, wingH);
+        // Right wing
+        p.drawLine(wingR / 4, 0, wingR, 0);
+        p.drawLine( wingR, -wingH,  wingR, wingH);
+        // Centre dot
+        p.setPen(Qt::NoPen);
+        p.setBrush(C_SYMBOL);
+        const int dr = std::max(3, r / 16);
+        p.drawEllipse(-dr, -dr, dr * 2, dr * 2);
 
         p.restore();
+    }
+
+    // ── 5. Bezel ring ─────────────────────────────────────────────────────────
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(C_BORDER, 3.0f));
+    p.drawEllipse(cx - r, cy - r, r * 2, r * 2);
+
+    // ── 6. Numeric readout ────────────────────────────────────────────────────
+    {
+        p.setFont(readoutFont);
+        p.setPen(C_LABEL);
+        const QString txt = QString("R %1°   P %2°   Y %3°")
+            .arg(rollDeg,  6, 'f', 1)
+            .arg(pitchDeg, 6, 'f', 1)
+            .arg(yawDeg,   6, 'f', 1);
+        const int ty = cy + r + margin / 2 + readoutH;
+        p.drawText(QRect(0, ty, width(), readoutH),
+                   Qt::AlignHCenter | Qt::AlignVCenter, txt);
     }
 }
 
@@ -407,12 +225,10 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
 
     float norm = sqrtf(accel[0]*accel[0] + accel[1]*accel[1] + accel[2]*accel[2]);
     if (norm < 0.3f || norm > 3.0f) {
-        float pitch_rate = gyro[0] * float(M_PI) / 180.f;
-        float roll_rate  = gyro[2] * float(M_PI) / 180.f;
-        float yaw_rate   = -gyro[1] * float(M_PI) / 180.f;
-        roll_  += roll_rate  * dt;
-        pitch_ += pitch_rate * dt;
-        yaw_   += yaw_rate   * dt;
+        // High motion — integrate gyro only
+        roll_  += gyro[2] * float(M_PI) / 180.f * dt;
+        pitch_ += gyro[0] * float(M_PI) / 180.f * dt;
+        yaw_   -= gyro[1] * float(M_PI) / 180.f * dt;
         update();
         return;
     }
@@ -421,12 +237,13 @@ void ControllerView::pushSample(float accel[3], float gyro[3], quint64 elapsed_u
     float ay = accel[1] / norm;
     float az = accel[2] / norm;
 
-    float roll_acc  = atan2f( ax,  az);
-    float pitch_acc = atan2f(-ay,  az);
+    // Accel-derived roll/pitch (DSU convention: accel Z+ = gravity when flat)
+    float roll_acc  = atan2f( ax,  az);   // right-side-down = positive roll
+    float pitch_acc = atan2f(-ay,  az);   // nose-up = positive pitch
 
-    // DSU convention: gyro[0]=pitch, gyro[1]=yaw (inv), gyro[2]=roll
-    float pitch_rate = gyro[0] * float(M_PI) / 180.f;
-    float roll_rate  = gyro[2] * float(M_PI) / 180.f;
+    // DSU gyro: [0]=pitch rate, [1]=-(yaw rate), [2]=roll rate
+    float pitch_rate =  gyro[0] * float(M_PI) / 180.f;
+    float roll_rate  =  gyro[2] * float(M_PI) / 180.f;
     float yaw_rate   = -gyro[1] * float(M_PI) / 180.f;
 
     if (!filterInit_) {
