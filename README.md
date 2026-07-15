@@ -1,187 +1,119 @@
-# SteamControllerGyroDSU
+# sc2gyrodsu-win
 
-DSU / Cemuhook motion server for the **Steam Controller 2026** on Linux —
-works on **Steam Deck**, **Bazzite**, and any generic Linux desktop.
+A DSU (Cemuhook protocol) motion server for the **Steam Controller 2**, ported
+to Windows from [Steam-Controller-GyroDSU](https://github.com/dylangmarinus-stack/Steam-Controller-GyroDSU)
+by dylangmarinus-stack, which targets SteamOS/Linux.
 
-Inspired by [SteamDeckGyroDSU](https://github.com/kmicki/SteamDeckGyroDSU) by kmicki.
-
----
+Streams gyro + accelerometer data (and buttons/sticks/triggers) from up to
+4 Steam Controller 2 units over the Cemuhook UDP protocol, so any
+DSU-compatible emulator can use the controller's motion sensors.
 
 ## Features
 
-- Streams **6DoF gyro + accelerometer** data over the DSU (Cemuhook) protocol
-- Supports up to **4 Steam Controllers simultaneously** (slots 0–3)
-- Works via **Bluetooth**, **USB-C**, and the **Proteus Puck** wireless dongle
-- Runs alongside **SteamDeckGyroDSU** — use both at the same time on Steam Deck
-- Automatic **gyro bias calibration** (activates when the controller is held still for ~2 s)
-- Runs as a **systemd user service** — starts automatically at login
-- Compatible with **Eden**, **Ryujinx**, **Cemu**, and any Cemuhook-compatible emulator
+- Supports up to **4 Steam Controllers simultaneously** (slots 0-3)
+- Works via **Bluetooth**, **USB-C**, and the **Proteus Puck** dongle
+- Automatic gyro bias calibration
+- Compatible with **Cemu**, **Ryujinx**, **Eden**, and any other
+  Cemuhook-compatible emulator
 
----
+## Quick start (prebuilt exe)
 
-## GUI Configuration Tool
+1. Double-click `sc2gyrodsu.exe` (or run it from a terminal to see logs).
+2. Connect your Steam Controller 2 via USB-C, Bluetooth, or the Proteus Puck
+   dongle.
+3. Point your emulator (Cemu, Ryujinx, Eden, ...) at:
+   - **IP:** `127.0.0.1`
+   - **Port:** `26760` (default) — use `sc2gyrodsu.exe --port 26761` if
+     `26760` is already taken by something like DS4Windows or BetterJoy.
 
-`sc2gyrodsu-config` is a graphical tool bundled with the installation.
+Slot 0 = first controller, slot 1 = second, and so on.
 
-### Axis Mapping tab
-Remap raw sensor axes if your controller's gyro axes are swapped or inverted.
-Use the **Auto-detect Axis Mapping** wizard to detect the correct mapping automatically
-by following a short set of guided gestures.
+### CLI options
 
-![Axis Mapping tab](docs/screenshots/axis_mapping.png)
+| Flag           | Description                                                     |
+|----------------|------------------------------------------------------------------|
+| `--port N`     | UDP port to listen on (default `26760`)                          |
+| `--expose`     | Listen on all interfaces, not just `127.0.0.1` (e.g. for another PC/device on your network) |
+| `--probe`      | List detected Valve HID interfaces and exit                      |
+| `--help`       | Print usage                                                       |
 
-### Axis Wizard
-Step-by-step guided detection. Read each instruction, position the controller,
-then press **Begin ↵** or tap any button on the controller to start each 5-second
-capture window.
+## Important: Steam interference
 
-![Axis Wizard](docs/screenshots/axis_wizard.png)
+If Steam is running, Steam Input may claim the controller and rewrite its
+settings (including gyro mode) every few seconds. If you get no motion data:
 
-### Test / Verify tab
-Live **Attitude Direction Indicator (ADI)** shows controller orientation in real time.
-Use it to verify your axis mapping is correct after running the wizard.
+- Close Steam entirely, **or**
+- In Steam → Settings → Controller, disable Steam Input for the Steam
+  Controller while using the DSU server.
 
-- Sky (blue) fills the display when the controller is face-up
-- The horizon tilts and shifts as you roll and pitch
-- The orange arc around the outside shows accumulated yaw
-- Numeric R / P / Y readout at the bottom
+The server re-sends its IMU-enable command every 100 ms, which usually wins
+the tug-of-war, but a clean setup is more reliable.
 
-![Test / Verify tab](docs/screenshots/test_verify.png)
+## Building from source
 
-### Calibration tab
-Run a manual gyro bias calibration. Hold the controller still for the duration
-of the capture to zero out sensor drift.
+Requires CMake 3.16+ and either Visual Studio 2019+ or MinGW-w64. hidapi is
+fetched and built automatically via `FetchContent` — no manual dependencies.
+The resulting `.exe` is fully standalone (statically-linked runtime and
+hidapi) either way — no Visual C++ Redistributable or other DLLs required
+on the end user's machine.
 
----
-
-## Install
-
-### One-click (Steam Deck / Bazzite Desktop Mode)
-
-Download the installer shortcut and double-click it on your Desktop:
-
-**[⬇ Download Installer](https://github.com/TyanColte/Steam-Controller-GyroDSU/releases/latest/download/SteamControllerGyroDSU.desktop)**
-
-The installer will:
-1. Copy the daemon and GUI tool to `~/SteamControllerGyroDSU/`
-2. Install and enable the systemd user service
-3. Install udev rules (so the controller is accessible without root)
-4. Create Desktop shortcuts for the config tool, updater, and uninstaller
-5. Install the application icon
-
-### Manual install from release zip
-
-```bash
-# Download and extract the latest release
-curl -L -o /tmp/setup.zip \
-  https://github.com/TyanColte/Steam-Controller-GyroDSU/releases/latest/download/SteamControllerGyroDSUSetup.zip
-unzip /tmp/setup.zip -d /tmp/
-bash /tmp/SteamControllerGyroDSUSetup/install.sh
+**Visual Studio (x64 Native Tools prompt):**
 ```
-
----
-
-## Emulator Setup
-
-Point your emulator's DSU / Cemuhook motion source at:
-
-| Setting | Value |
-|---------|-------|
-| IP | `127.0.0.1` |
-| Port | `26761` |
-| Slot | 0 = first controller, 1 = second, … |
-
-### Eden / Ryujinx / Sudachi
-`Settings → Controls → Motion → DSU Server → 127.0.0.1:26761`
-
-### Cemu
-`Settings → GamePad Motion Source → DSU1 → 127.0.0.1:26761`
-
----
-
-## Using alongside SteamDeckGyroDSU
-
-Run [SteamDeckGyroDSU](https://github.com/kmicki/SteamDeckGyroDSU) on the default
-port `26760` for the Steam Deck's built-in gyro, and this service on `26761` for your
-Steam Controller. Add both servers in your emulator:
-
-| Port | Source |
-|------|--------|
-| `26760` | Steam Deck built-in gyro (SteamDeckGyroDSU) |
-| `26761` | Steam Controller 2026 (this service) |
-
----
-
-## First-Time Setup Tips
-
-1. **Run the Axis Wizard** after installing — it detects the correct sensor axis mapping
-   for your controller in under a minute.
-2. **Run Calibration** after the wizard — the axis remap invalidates any stored bias,
-   so a fresh calibration eliminates gyro drift.
-3. **Reset Yaw** in the Test tab if the yaw reading has drifted (there is no
-   magnetometer, so yaw integrates over time).
-
----
-
-## Uninstall
-
-Double-click **Uninstall SteamControllerGyroDSU** on your Desktop,
-or run:
-
-```bash
-~/SteamControllerGyroDSU/uninstall.sh
+cmake -B build
+cmake --build build --config Release
 ```
+Output: `build\Release\sc2gyrodsu.exe`
 
----
-
-## Update
-
-Double-click **Update SteamControllerGyroDSU** on your Desktop,
-or run:
-
-```bash
-~/SteamControllerGyroDSU/update.sh
+**MinGW (or cross-compiling from Linux):**
 ```
-
----
-
-## Building from Source
-
-```bash
-# Dependencies (Ubuntu / Debian)
-sudo apt install cmake g++ pkg-config libhidapi-dev libudev-dev qt6-base-dev libgl1-mesa-dev
-
-# Build
-git clone https://github.com/TyanColte/Steam-Controller-GyroDSU.git
-cd Steam-Controller-GyroDSU
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-
-# Binaries
-# build/sc2gyrodsu        — DSU daemon
-# build/sc2gyrodsu-config — GUI config tool (requires Qt6)
+cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
+A `mingw-toolchain.cmake` toolchain file is included for cross-compiling from
+Linux with `x86_64-w64-mingw32-gcc`/`g++`.
 
----
+The same CMake tree also still builds on Linux (`cmake -B build && cmake --build build`,
+using hidapi's `hidraw` backend), so this fork stays upstreamable as a
+cross-platform version.
+
+## Run at startup (optional)
+
+Press `Win+R`, type `shell:startup`, and drop a shortcut to `sc2gyrodsu.exe`
+in that folder. To hide the console window, launch it via a small `.vbs`
+wrapper, or use Task Scheduler with "Run whether user is logged on or not".
+
+## Controller profile (Cemu example)
+
+`controllerProfiles/controller0.xml` is a sample Cemu Wii U GamePad profile
+pointed at `127.0.0.1:26760` — copy it into Cemu's `controllerProfiles`
+folder as a starting point.
+
+## What changed from the Linux original
+
+- **`inc/platform.h`** (new): Winsock2/POSIX socket abstraction (`socket_t`,
+  `closesocket` vs `close`, per-platform `SO_RCVTIMEO`, `WSAStartup` RAII),
+  plus a portable `narrow()` for hidapi's `wchar_t*` serial numbers (the
+  original `reinterpret_cast` breaks on Windows, where `wchar_t` is UTF-16).
+- **`src/dsu.cpp`**: POSIX headers removed; `recvfrom`/`sendto` buffer casts
+  and `socklen_t` handled per-platform; `randId()` uses `std::chrono` instead
+  of `clock_gettime`/`getpid`, which aren't available on MSVC.
+- **`src/hiddev.cpp`**: feature reports retry with a +1-byte buffer, since the
+  Windows HID stack (`HidD_SetFeature`) requires the buffer to match the
+  device's exact declared feature report length, which differs from hidraw.
+- **`CMakeLists.txt`**: fetches hidapi via `FetchContent`, selects the
+  `winapi` backend + links `ws2_32` on Windows and `hidraw` on Linux;
+  MSVC-compatible compile flags.
+
+Everything else — the HID protocol, DSU packet layout, axis mapping, and
+slot management — is unchanged from the original.
+
+## Notes
+
+- Gyro auto-calibration activates when the controller is held still for
+  ~2 seconds.
+- Only motion data, buttons, sticks, and triggers are provided — no rumble.
 
 ## License
 
-MIT License — Copyright (c) 2026 TyanColte
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+MIT — see [LICENSE](LICENSE). Inherited from the original project by
+dylangmarinus-stack; this port's changes are released under the same terms.

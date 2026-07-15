@@ -3,10 +3,6 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 #include <chrono>
 #include <mutex>
 #include <unordered_map>
@@ -16,14 +12,12 @@ using namespace std::chrono_literals;
 
 namespace sc2 {
 
-// Exact same layout as sc2dsu Rust version
-// HEADER_LEN      = 16  (magic 4 + ver 2 + len 2 + crc 4 + ... wait)
-// Actually:
+// Wire format matches the sc2dsu reference implementation (Rust) byte-for-byte:
 //   0-3:   magic
 //   4-5:   version
 //   6-7:   payload length (= total - 16)
-//   8-11:  CRC32
-//   12-15: server_id
+//   8-11:  CRC32 (of the whole message with this field zeroed)
+//   12-15: server_id / client_id
 //   16-19: msg_type
 //   20+:   payload
 // HEADER_LEN      = 16 (up to and including CRC)
@@ -84,7 +78,6 @@ static void w32(uint8_t* p, uint32_t v) { p[0]=v&0xFF; p[1]=(v>>8)&0xFF; p[2]=(v
 static uint16_t r16(const uint8_t* p) { return p[0]|((uint16_t)p[1]<<8); }
 static uint32_t r32(const uint8_t* p) { return p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24); }
 
-// Exact same as Rust write_header
 static void writeHeader(uint8_t* out, size_t totalLen, uint32_t sid, uint32_t mtype) {
     memcpy(out, MAGIC_SERVER, 4);
     w16(out+4, PROTO_VER);
@@ -101,7 +94,10 @@ static void finCrc(uint8_t* out, size_t len) {
 static void writeCtrlHdr(uint8_t* buf, uint8_t slot, bool conn) {
     buf[0] = slot;
     if (conn && slot < MAX_SLOTS) {
-        buf[1] = 1; buf[2] = 2; buf[3] = 1;
+        // Cemuhook controller header: state 2 = connected (1 = "reserved",
+        // which Cemu filters out of its controller list), model 2 = full gyro,
+        // connection type 1 = USB.
+        buf[1] = 2; buf[2] = 2; buf[3] = 1;
         memcpy(buf+4, SLOT_MACS[slot], 6);
         buf[10] = 0;
     } else {
@@ -113,7 +109,7 @@ static uint8_t stk(int16_t v)  { return (uint8_t)((((int32_t)v+32768))>>8); }
 static uint8_t trg(uint16_t v) { uint32_t r=v>>7; return r>255?255:(uint8_t)r; }
 
 static void writeDataBody(uint8_t* body, const ControllerState& s) {
-    // Exact same offsets as Rust sc2dsu write_data_body
+    // Byte offsets follow the sc2dsu reference layout:
     // B_CONNECTED = 0
     // B_BUTTONS   = 5
     // B_STICKS    = 9
@@ -134,9 +130,15 @@ static void writeDataBody(uint8_t* body, const ControllerState& s) {
         (dn(MENU)?0x01:0)|(dn(L3)?0x02:0)|(dn(R3)?0x04:0)|(dn(VIEW)?0x08:0)|
         (dn(DPAD_UP)?0x10:0)|(dn(DPAD_RIGHT)?0x20:0)|(dn(DPAD_DOWN)?0x40:0)|(dn(DPAD_LEFT)?0x80:0));
     // buttons2 at body[6]
+    // Face button bit order follows the DSU/cemuhook spec's DS4 layout
+    // (Triangle/Circle/Cross/Square), which any client maps to the
+    // standard Xbox-style crosswalk: Y=Triangle, B=Circle, A=Cross, X=Square.
+    // Confirmed against real Steam Controller 2 hardware — previously this
+    // sent X->Triangle/A->Circle/B->Cross/Y->Square, which is A<->B and
+    // X<->Y swapped relative to every other DSU client's expectation.
     body[6]=(uint8_t)(
         (l2d?0x01:0)|(r2d?0x02:0)|(dn(L)?0x04:0)|(dn(R)?0x08:0)|
-        (dn(X)?0x10:0)|(dn(A)?0x20:0)|(dn(B)?0x40:0)|(dn(Y)?0x80:0));
+        (dn(Y)?0x10:0)|(dn(B)?0x20:0)|(dn(A)?0x40:0)|(dn(X)?0x80:0));
     body[7]=dn(STEAM)?1:0;
     body[8]=dn(QAM)?1:0;
 
@@ -152,10 +154,10 @@ static void writeDataBody(uint8_t* body, const ControllerState& s) {
     body[14]=fl(dn(DPAD_DOWN));
     body[15]=fl(dn(DPAD_RIGHT));
     body[16]=fl(dn(DPAD_UP));
-    body[17]=fl(dn(Y));
-    body[18]=fl(dn(B));
-    body[19]=fl(dn(A));
-    body[20]=fl(dn(X));
+    body[17]=fl(dn(X)); // square
+    body[18]=fl(dn(A)); // cross
+    body[19]=fl(dn(B)); // circle
+    body[20]=fl(dn(Y)); // triangle
     body[21]=fl(dn(R));
     body[22]=fl(dn(L));
     body[23]=r2;
@@ -177,8 +179,8 @@ static void writeDataBody(uint8_t* body, const ControllerState& s) {
 }
 
 static uint32_t randId() {
-    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
-    return (uint32_t)(ts.tv_nsec^((uint32_t)getpid()*2654435761u));
+    auto t = std::chrono::steady_clock::now().time_since_epoch().count();
+    return (uint32_t)(t ^ (t >> 32) ^ 2654435761u);
 }
 
 // DsuServer implementation
@@ -194,16 +196,16 @@ DsuServer::~DsuServer() { stop(); }
 
 void DsuServer::start() {
     sock_ = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_ < 0) { perror("socket"); return; }
+    if (!socketValid(sock_)) { fprintf(stderr, "sc2gyrodsu: socket() failed\n"); return; }
     struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port_);
     addr.sin_addr.s_addr = expose_ ? INADDR_ANY : htonl(INADDR_LOOPBACK);
     if (bind(sock_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("bind"); close(sock_); sock_=-1; return;
+        fprintf(stderr, "sc2gyrodsu: bind() failed on port %u (already in use?)\n", port_);
+        closeSocket(sock_); sock_ = INVALID_SOCK; return;
     }
-    struct timeval tv{0,10000};
-    setsockopt(sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setRecvTimeoutMs(sock_, 10);
     running_ = true;
     thread_ = std::thread(&DsuServer::serverLoop, this);
     fprintf(stderr, "sc2gyrodsu: DSU server on %s:%u  (id 0x%08X)\n",
@@ -213,7 +215,7 @@ void DsuServer::start() {
 void DsuServer::stop() {
     running_ = false;
     if (thread_.joinable()) thread_.join();
-    if (sock_ >= 0) { close(sock_); sock_=-1; }
+    if (socketValid(sock_)) { closeSocket(sock_); sock_ = INVALID_SOCK; }
 }
 
 bool DsuServer::hasSubscribers() const {
@@ -229,7 +231,7 @@ void DsuServer::setDisconnected(int slot) {
 void DsuServer::pushState(const ControllerState& state) {
     { std::lock_guard<std::mutex> lk(stateMutex_);
       int s=state.slot; if(s>=0&&s<4) slotConnected_[s]=true; }
-    samplesInWindow_.fetch_add(1, std::memory_order_relaxed);
+    samplesInWindow_++;
     broadcastData(state);
 }
 
@@ -237,19 +239,22 @@ void DsuServer::serverLoop() {
     uint8_t buf[1024];
     while (running_) {
         struct sockaddr_in src{};
-        socklen_t sl=sizeof(src);
-        int n=recvfrom(sock_,buf,sizeof(buf),0,(struct sockaddr*)&src,&sl);
-        if (n > 0) { requestsInWindow_.fetch_add(1, std::memory_order_relaxed); handleMessage(buf,n,src); }
+#ifdef _WIN32
+        int sl = sizeof(src);
+        int n = recvfrom(sock_, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&src, &sl);
+#else
+        socklen_t sl = sizeof(src);
+        int n = recvfrom(sock_, buf, sizeof(buf), 0, (struct sockaddr*)&src, &sl);
+#endif
+        if (n > 0) { requestsInWindow_++; handleMessage(buf,n,src); }
         cleanupSubscribers();
         auto now=std::chrono::steady_clock::now();
         if (now-windowStart_>=STAT_INTERVAL) {
             float secs=std::chrono::duration<float>(now-windowStart_).count();
             size_t ns; { std::lock_guard<std::mutex> lk(subMutex_); ns=subscribers_.size(); }
-            uint32_t smpl = samplesInWindow_.exchange(0, std::memory_order_relaxed);
-            uint32_t pkts = packetsInWindow_.exchange(0, std::memory_order_relaxed);
-            uint32_t reqs = requestsInWindow_.exchange(0, std::memory_order_relaxed);
             fprintf(stderr,"dsu: %zu sub(s) | %.1f samples/s | %.1f packets/s | %.1f reqs/s\n",
-                ns, smpl/secs, pkts/secs, reqs/secs);
+                ns,samplesInWindow_/secs,packetsInWindow_/secs,requestsInWindow_/secs);
+            samplesInWindow_=packetsInWindow_=requestsInWindow_=0;
             windowStart_=now;
         }
     }
@@ -269,14 +274,24 @@ void DsuServer::handleMessage(const uint8_t* buf, int n, struct sockaddr_in& src
 
     switch (mtype) {
         case MSG_VERSION:
+            fprintf(stderr, "dsu: VERSION request from client %08X (port %u)\n",
+                clientId, ntohs(src.sin_port));
             sendVersion(src);
             break;
         case MSG_PORTS:
             if (plen >= 4) {
                 uint32_t amt = r32(pay);
                 if (amt > 4) amt = 4;
-                for (uint32_t i = 0; i < amt && (int)(4+i) <= plen; i++)
-                    sendSlotInfo(src, pay[4+i]);
+                for (uint32_t i = 0; i < amt && (int)(4+i) <= plen; i++) {
+                    uint8_t slot = pay[4+i];
+                    bool conn;
+                    { std::lock_guard<std::mutex> lk(stateMutex_);
+                      conn = slot < 4 && slotConnected_[slot]; }
+                    fprintf(stderr,
+                        "dsu: PORT-INFO request from client %08X (port %u) for slot %u -> replying state=%s\n",
+                        clientId, ntohs(src.sin_port), slot, conn ? "2 (connected)" : "0 (disconnected)");
+                    sendSlotInfo(src, slot);
+                }
             }
             break;
         case MSG_DATA: {
@@ -297,22 +312,23 @@ void DsuServer::handleMessage(const uint8_t* buf, int n, struct sockaddr_in& src
 }
 
 void DsuServer::sendVersion(struct sockaddr_in& src) {
-    // Exact same as Rust: HEADER_LEN_FULL + 2 = 22 bytes
-    uint8_t out[HEADER_LEN_FULL + 2] = {};
+    // 24 bytes: u16 version + 2 padding bytes. Cemu's VersionResponse struct
+    // is padded to 24 and validates the CRC over the full struct size, so a
+    // 22-byte response fails its CRC check.
+    uint8_t out[HEADER_LEN_FULL + 4] = {};
     writeHeader(out, sizeof(out), serverId_, MSG_VERSION);
     w16(out + HEADER_LEN_FULL, PROTO_VER);
     finCrc(out, sizeof(out));
-    sendto(sock_, out, sizeof(out), 0, (struct sockaddr*)&src, sizeof(src));
+    sendto(sock_, (const char*)out, sizeof(out), 0, (struct sockaddr*)&src, sizeof(src));
 }
 
 void DsuServer::sendSlotInfo(struct sockaddr_in& src, uint8_t slot) {
-    // Exact same as Rust: HEADER_LEN_FULL + 12 = 32 bytes
-    uint8_t out[HEADER_LEN_FULL + 12] = {};
+    uint8_t out[HEADER_LEN_FULL + 12] = {}; // 32 bytes total
     writeHeader(out, sizeof(out), serverId_, MSG_PORTS);
     bool conn; { std::lock_guard<std::mutex> lk(stateMutex_); conn=slot<4&&slotConnected_[slot]; }
     writeCtrlHdr(out + HEADER_LEN_FULL, slot, conn);
     finCrc(out, sizeof(out));
-    sendto(sock_, out, sizeof(out), 0, (struct sockaddr*)&src, sizeof(src));
+    sendto(sock_, (const char*)out, sizeof(out), 0, (struct sockaddr*)&src, sizeof(src));
 }
 
 void DsuServer::broadcastData(const ControllerState& state) {
@@ -320,8 +336,7 @@ void DsuServer::broadcastData(const ControllerState& state) {
     if (subscribers_.empty()) return;
     uint8_t slot=(uint8_t)(state.slot<4?state.slot:0);
 
-    // Exact same as Rust: HEADER_LEN_FULL + 80 = 100 bytes
-    uint8_t out[HEADER_LEN_FULL + 80] = {};
+    uint8_t out[HEADER_LEN_FULL + 80] = {}; // 100 bytes total
     writeHeader(out, sizeof(out), serverId_, MSG_DATA);
     writeCtrlHdr(out + HEADER_LEN_FULL, slot, true);
 
@@ -334,8 +349,8 @@ void DsuServer::broadcastData(const ControllerState& state) {
         sub.packetCounters[slot]++;
         w32(out + PCNT_OFF, sub.packetCounters[slot]);
         finCrc(out, sizeof(out));
-        sendto(sock_, out, sizeof(out), 0, (struct sockaddr*)&sub.addr, sizeof(sub.addr));
-        packetsInWindow_.fetch_add(1, std::memory_order_relaxed);
+        sendto(sock_, (const char*)out, sizeof(out), 0, (struct sockaddr*)&sub.addr, sizeof(sub.addr));
+        packetsInWindow_++;
     }
 }
 

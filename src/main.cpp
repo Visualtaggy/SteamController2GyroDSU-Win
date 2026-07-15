@@ -1,7 +1,7 @@
 #include "hiddev.h"
+#include "platform.h"
 #include "dsu.h"
 #include "triton.h"
-#include "config.h"
 #include <cstdio>
 #include <cstring>
 #include <csignal>
@@ -34,7 +34,7 @@ static void slotReaderThread(HidSlot* slot, DsuServer* server, std::atomic<bool>
     auto     lastSample = std::chrono::steady_clock::now();
     uint32_t lastTs    = 0;
 
-    fprintf(stderr, "triton-%d: reader started (id=%s)\n",
+    fprintf(stderr, "triton-%d: reader started (serial=%s)\n",
             slot->dsuSlot, slot->serial.c_str());
 
     while (!gShutdown && !done) {
@@ -65,56 +65,40 @@ static void slotReaderThread(HidSlot* slot, DsuServer* server, std::atomic<bool>
 
 static void printHelp(const char* name) {
     fprintf(stderr,
-        "sc2gyrodsu — Cemuhook DSU server for Steam Controller 2\n"
-        "Usage: %s [--port PORT] [--expose] [--probe] [--help]\n"
-        "\n"
-        "  --port PORT   UDP port to listen on (default: 26761)\n"
-        "  --expose      Bind to 0.0.0.0 instead of 127.0.0.1\n"
-        "  --probe       List Valve HID interfaces and exit\n"
-        "  --no-config   Ignore ~/.config/sc2gyrodsu/config.ini\n",
-        name);
+        "sc2gyrodsu — Cemuhook DSU server for the Steam Controller 2\n"
+        "Usage: %s [--port PORT] [--expose] [--probe] [--help]\n", name);
 }
 
 int main(int argc, char* argv[]) {
-    bool probe    = false;
-    bool noConfig = false;
-    // Port and expose start unset; config fills them, CLI overrides after.
-    int  portOverride   = -1;
-    int  exposeOverride = -1;
+    uint16_t port   = 26760;
+    bool     expose = false;
+    bool     probe  = false;
 
     for (int i = 1; i < argc; ++i) {
-        if      (strcmp(argv[i], "--probe")     == 0) probe          = true;
-        else if (strcmp(argv[i], "--expose")    == 0) exposeOverride = 1;
-        else if (strcmp(argv[i], "--no-config") == 0) noConfig       = true;
-        else if (strcmp(argv[i], "--help")      == 0) { printHelp(argv[0]); return 0; }
-        else if (strcmp(argv[i], "--port")      == 0 && i + 1 < argc)
-            portOverride = atoi(argv[++i]);
+        if (strcmp(argv[i], "--probe") == 0)       probe  = true;
+        else if (strcmp(argv[i], "--expose") == 0) expose = true;
+        else if (strcmp(argv[i], "--help") == 0)   { printHelp(argv[0]); return 0; }
+        else if (strcmp(argv[i], "--port") == 0 && i+1 < argc)
+            port = (uint16_t)atoi(argv[++i]);
     }
 
     signal(SIGINT,  signalHandler);
     signal(SIGTERM, signalHandler);
 
+    fprintf(stderr, "sc2gyrodsu v1.3-win\n");
+
     HidManager manager;
     if (probe) { manager.probe(); return 0; }
 
-    // Load config (or use compiled-in defaults).
-    Sc2Config cfg = noConfig ? Sc2Config{} : Sc2Config::load();
-
-    // CLI overrides beat config file.
-    if (portOverride   > 0) cfg.port   = static_cast<uint16_t>(portOverride);
-    if (exposeOverride >= 0) cfg.expose = (exposeOverride == 1);
-
-    DsuServer server(cfg.port, cfg.expose);
+    DsuServer server(port, expose);
     server.start();
 
-    fprintf(stderr, "sc2gyrodsu: running. Waiting for emulator on 127.0.0.1:%u\n", cfg.port);
-    fprintf(stderr, "sc2gyrodsu: config = %s\n", Sc2Config::configPath().c_str());
+    fprintf(stderr, "sc2gyrodsu running. Waiting for emulator on 127.0.0.1:%u\n", port);
 
     bool slotUsed[4] = {};
     std::vector<std::unique_ptr<SlotReader>> readers;
 
     while (!gShutdown) {
-        // Reap finished readers and free their slots.
         for (auto it = readers.begin(); it != readers.end(); ) {
             auto& r = **it;
             if (r.done) {
@@ -124,22 +108,43 @@ int main(int argc, char* argv[]) {
             } else ++it;
         }
 
-        // Scan for newly connected SC2 devices.
-        std::vector<std::unique_ptr<HidSlot>> newSlots;
-        manager.scan(newSlots, slotUsed, cfg.gyro, cfg.accel, cfg.gyroBias);
+        struct hid_device_info* devs = hid_enumerate(VID_VALVE, 0);
+        struct hid_device_info* cur  = devs;
+        while (cur && !gShutdown) {
+            if (isTritonPid(cur->product_id) && cur->usage_page >= 0xFF00) {
+                std::string serial = cur->serial_number
+                    ? narrow(cur->serial_number)
+                    : std::string(cur->path);
 
-        for (auto& slot : newSlots) {
-            HidSlot* slotPtr = slot.get();
-            auto reader = std::make_unique<SlotReader>();
-            reader->slot = std::move(slot);
-            std::atomic<bool>& doneRef = reader->done;
-            reader->thread = std::thread([slotPtr, &server, &doneRef]() {
-                slotReaderThread(slotPtr, &server,
-                    const_cast<std::atomic<bool>&>(doneRef));
-            });
-            readers.push_back(std::move(reader));
+                bool already = false;
+                for (auto& r : readers)
+                    if (r->slot->serial == serial) { already = true; break; }
+                if (already) { cur = cur->next; continue; }
+
+                int slot = -1;
+                for (int i = 0; i < 4; ++i)
+                    if (!slotUsed[i]) { slot = i; break; }
+                if (slot < 0) { cur = cur->next; continue; }
+
+                hid_device* dev = hid_open_path(cur->path);
+                if (!dev) { cur = cur->next; continue; }
+
+                fprintf(stderr, "scanner: PID %04X (%s) serial=%s → slot %d\n",
+                    cur->product_id, pidLabel(cur->product_id), serial.c_str(), slot);
+
+                slotUsed[slot] = true;
+                auto reader = std::make_unique<SlotReader>();
+                reader->slot = std::make_unique<HidSlot>(dev, slot, cur->product_id, serial);
+                HidSlot* slotPtr = reader->slot.get();
+                std::atomic<bool>& doneRef = reader->done;
+                reader->thread = std::thread([slotPtr, &server, &doneRef](){
+                    slotReaderThread(slotPtr, &server, doneRef);
+                });
+                readers.push_back(std::move(reader));
+            }
+            cur = cur->next;
         }
-
+        hid_free_enumeration(devs);
         std::this_thread::sleep_for(500ms);
     }
 

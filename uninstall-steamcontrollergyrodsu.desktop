@@ -1,6 +1,0 @@
-[Desktop Entry]
-Name=Uninstall SteamControllerGyroDSU
-Exec=bash -c "$HOME/SteamControllerGyroDSU/uninstall.sh"
-Icon=edit-delete
-Terminal=true
-Type=Application

@@ -1,5 +1,0 @@
-<RCC>
-  <qresource prefix="/icons">
-    <file alias="sc2gyrodsu.png">icons/sc2gyrodsu.png</file>
-  </qresource>
-</RCC>
