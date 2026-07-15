@@ -1,4 +1,4 @@
-# sc2gyrodsu-win
+# SC2GyroDSU-Windows
 
 A DSU (Cemuhook protocol) motion server for the **Steam Controller 2**, ported
 to Windows from [Steam-Controller-GyroDSU](https://github.com/dylangmarinus-stack/Steam-Controller-GyroDSU)
@@ -102,7 +102,9 @@ folder as a starting point.
   device's exact declared feature report length, which differs from hidraw.
 - **`CMakeLists.txt`**: fetches hidapi via `FetchContent`, selects the
   `winapi` backend + links `ws2_32` on Windows and `hidraw` on Linux;
-  MSVC-compatible compile flags.
+  MSVC-compatible compile flags; statically links the MSVC runtime
+  (`/MT`) so the `.exe` has no Visual C++ Redistributable dependency,
+  matching MinGW's static linking.
 
 Everything else — the HID protocol, DSU packet layout, axis mapping, and
 slot management — is unchanged from the original.
